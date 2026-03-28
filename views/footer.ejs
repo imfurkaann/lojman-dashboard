@@ -1,0 +1,78 @@
+      </div>
+    </div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.socket.io/4.5.4/socket.io.js"></script>
+  <script src="/js/app.js"></script>
+  <script>
+    // Back/forward navigasyonunda tarayici bazen sayfayi cache'ten getirir (bfcache).
+    // Bu durumda veri eski kalabilecegi icin otomatik yenileme yapariz.
+    window.addEventListener('pageshow', (event) => {
+      const navEntries = performance.getEntriesByType('navigation');
+      const navType = navEntries && navEntries[0] ? navEntries[0].type : '';
+      if (event.persisted || navType === 'back_forward') {
+        window.location.reload();
+      }
+    });
+
+    // Socket.IO bağlantısı
+    const socket = io();
+    
+    socket.on('connect', () => {
+      console.log('Socket.IO bağlantılandı:', socket.id);
+    });
+    
+    socket.on('disconnect', () => {
+      console.log('Socket.IO bağlantısı koptu');
+    });
+    
+    // Personel detay sayfası güncellemeleri
+    socket.on('personnel:room-update', (data) => {
+      console.log('Oda güncellemesi aldı:', data);
+      
+      // Oda bilgisi güncellemesi
+      const roomInfoElement = document.getElementById('oda-bilgisi');
+      if (roomInfoElement && data.room_name) {
+        roomInfoElement.innerHTML = `<strong>Oda:</strong> ${data.room_name}`;
+      }
+      
+      // Oda detay sayfasındaki anahtar sayısı güncellemesi
+      const keyCountElement = document.getElementById(`key-count-${data.roomId}`);
+      if (keyCountElement && data.anahtar_sayisi !== undefined) {
+        const parts = keyCountElement.textContent.split('/');
+        if (parts.length === 2) {
+          keyCountElement.textContent = `${data.anahtar_sayisi}/${parts[1]}`;
+        } else {
+          keyCountElement.textContent = data.anahtar_sayisi;
+        }
+      }
+    });
+    
+    socket.on('personnel:data-update', (data) => {
+      console.log('Personel verisi güncellemesi aldı:', data);
+      
+      // Durum güncellemesi
+      if (data.status) {
+        const statusElement = document.querySelector('.badge');
+        if (statusElement) {
+          statusElement.textContent = data.status === 'aktif' ? 'Aktif' : 'Çıkış Yapmış';
+          statusElement.className = data.status === 'aktif' ? 'badge bg-success fs-6' : 'badge bg-secondary fs-6';
+        }
+      }
+    });
+    
+    socket.on('complaint:updated', (data) => {
+      console.log('Şikayetler güncellemesi aldı:', data);
+      
+      // Şikayet listesi güncellemesi
+      const complaintElement = document.getElementById(`complaint-${data.id}`);
+      if (complaintElement && data.status) {
+        const statusBadge = complaintElement.querySelector('.badge');
+        if (statusBadge) {
+          statusBadge.textContent = data.status;
+        }
+      }
+    });
+  </script>
+</body>
+</html>

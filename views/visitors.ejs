@@ -1,0 +1,167 @@
+<%- include('layout', { title: 'Ziyaretçiler' }) %>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h4 class="mb-0"><i class="bi bi-person-badge"></i> Ziyaretçi Kayıtları</h4>
+  <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addVisitorModal">
+    <i class="bi bi-plus-lg"></i> Ziyaretçi Ekle
+  </button>
+</div>
+
+<!-- Filtre -->
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-body py-2">
+    <form method="GET" class="row g-2 align-items-center">
+      <div class="col-md-3">
+        <input type="text" class="form-control form-control-sm" name="search" placeholder="İsim, amaç veya firma..." value="<%= search %>">
+      </div>
+      <div class="col-md-2">
+        <input type="date" class="form-control form-control-sm" name="date" value="<%= dateFilter %>" onchange="this.form.submit()">
+      </div>
+      <% if (search || dateFilter) { %>
+      <div class="col-md-2">
+        <a href="/ziyaretciler" class="btn btn-sm btn-outline-secondary w-100">Temizle</a>
+      </div>
+      <% } %>
+    </form>
+  </div>
+</div>
+
+<!-- Liste -->
+<div class="card border-0 shadow-sm">
+  <div class="card-body p-0">
+    <% if (visitors.length === 0) { %>
+      <div class="text-center text-muted py-5">
+        <i class="bi bi-person-badge fs-1"></i>
+        <p class="mt-2">Ziyaretçi kaydı bulunamadı</p>
+      </div>
+    <% } else { %>
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Ziyaretçi</th>
+            <th>Amaç</th>
+            <th>Firma</th>
+            <th>Telefon</th>
+            <th>Giriş Saati</th>
+            <th>Çıkış Saati</th>
+            <th>Not</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% visitors.forEach(v => { %>
+          <tr>
+            <td><strong><%= v.visitor_name %></strong></td>
+            <td><%= v.purpose %></td>
+            <td><%= v.company || '-' %></td>
+            <td><%= v.phone || '-' %></td>
+            <td><small><%= new Date(v.visit_date).toLocaleString('tr-TR') %></small></td>
+            <td>
+              <% if (v.departure_time) { %>
+                <small><%= new Date(v.departure_time).toLocaleString('tr-TR') %></small>
+              <% } else { %>
+                <span class="badge bg-info">Hâlâ Burada</span>
+              <% } %>
+            </td>
+            <td><small><%= v.notes || '-' %></small></td>
+            <td>
+              <% if (!v.departure_time) { %>
+                <form method="POST" action="/ziyaretciler/<%= v.id %>/cikis" class="d-inline">
+                  <button class="btn btn-sm btn-outline-warning" title="Çıkış Yap"><i class="bi bi-box-arrow-right"></i></button>
+                </form>
+              <% } %>
+              <button class="btn btn-sm btn-outline-primary" title="Düzenle" data-bs-toggle="modal" data-bs-target="#editVisitorModal<%= v.id %>"><i class="bi bi-pencil"></i></button>
+            </td>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+    <% } %>
+  </div>
+</div>
+
+<!-- Düzenle Modalleri -->
+<% visitors.forEach(v => { %>
+<div class="modal fade" id="editVisitorModal<%= v.id %>" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="POST" action="/ziyaretciler/<%= v.id %>/guncelle">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-pencil"></i> Ziyaretçi Düzenle</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Ziyaretçi Adı *</label>
+            <input type="text" class="form-control" name="visitor_name" value="<%= v.visitor_name %>" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Ziyaret Amacı *</label>
+            <input type="text" class="form-control" name="purpose" value="<%= v.purpose %>" placeholder="Örn: Malzeme İndirme, Ziyaret..." required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Firma/Kurum</label>
+            <input type="text" class="form-control" name="company" value="<%= v.company || '' %>">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Telefon</label>
+            <input type="text" class="form-control" name="phone" value="<%= v.phone || '' %>">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Not</label>
+            <textarea class="form-control" name="notes" rows="2"><%= v.notes || '' %></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+          <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Kaydet</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+<% }) %>
+
+<!-- Ziyaretçi Ekle Modal -->
+<div class="modal fade" id="addVisitorModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="POST" action="/ziyaretciler/ekle">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-plus-lg"></i> Ziyaretçi Ekle</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Ziyaretçi Adı *</label>
+            <input type="text" class="form-control" name="visitor_name" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Ziyaret Amacı *</label>
+            <input type="text" class="form-control" name="purpose" placeholder="Örn: Malzeme İndirme, Ziyaret..." required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Firma/Kurum</label>
+            <input type="text" class="form-control" name="company">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Telefon</label>
+            <input type="text" class="form-control" name="phone">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Not</label>
+            <textarea class="form-control" name="notes" rows="2"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+          <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Kaydet</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<%- include('footer') %>

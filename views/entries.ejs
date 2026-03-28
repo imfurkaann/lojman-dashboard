@@ -1,0 +1,199 @@
+<%- include('layout', { title: 'Giriş/Çıkış Listesi' }) %>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h4 class="mb-0"><i class="bi bi-arrow-left-right"></i> Giriş/Çıkış Listesi</h4>
+  <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addEntryModal">
+    <i class="bi bi-plus-lg"></i> Yeni Kayıt
+  </button>
+</div>
+
+<!-- Filtre -->
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-body py-2">
+    <form method="GET" class="row g-2 align-items-center">
+      <div class="col-md-3">
+        <select class="form-select form-select-sm" name="type" onchange="this.form.submit()">
+          <option value="">Tümü</option>
+          <option value="giris" <%= typeFilter === 'giris' ? 'selected' : '' %>>Giriş</option>
+          <option value="cikis" <%= typeFilter === 'cikis' ? 'selected' : '' %>>Çıkış</option>
+        </select>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Aktif Kayıtlar (Bekleyen) -->
+<h5 class="mb-3"><i class="bi bi-clock"></i> Bekleyen Kayıtlar <span class="badge bg-primary"><%= activeEntries.length %></span></h5>
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-body p-0">
+    <% if (activeEntries.length === 0) { %>
+      <div class="text-center text-muted py-4">
+        <p class="mb-0">Bekleyen kayıt yok</p>
+      </div>
+    <% } else { %>
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Tür</th>
+            <th>Kişi Adı</th>
+            <th>Beklenen Tarih</th>
+            <th>Not</th>
+            <th>Durum</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% activeEntries.forEach(e => { %>
+          <tr>
+            <td>
+              <% if (e.type === 'giris') { %>
+                <span class="badge bg-success"><i class="bi bi-arrow-down"></i> Giriş</span>
+              <% } else { %>
+                <span class="badge bg-danger"><i class="bi bi-arrow-up"></i> Çıkış</span>
+              <% } %>
+            </td>
+            <td><strong><%= e.person_name %></strong></td>
+            <td><%= e.planned_date ? new Date(e.planned_date).toLocaleDateString('tr-TR') : '-' %></td>
+            <td><%= e.notes || '-' %></td>
+            <td>
+              <form method="POST" action="/giris-cikis/<%= e.id %>/guncelle" class="d-inline">
+                <select name="status" class="form-select form-select-sm d-inline w-auto" onchange="this.form.submit()">
+                  <option value="bekliyor" selected>Bekliyor</option>
+                  <option value="tamamlandi">Tamamlandı</option>
+                  <option value="iptal">İptal</option>
+                </select>
+              </form>
+            </td>
+            <td>
+              <form method="POST" action="/giris-cikis/<%= e.id %>/sil" class="d-inline" onsubmit="return confirm('Bu kaydı silmek istediğinize emin misiniz?')">
+                <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+              </form>
+            </td>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+    <% } %>
+  </div>
+</div>
+
+<!-- Tamamlanan / İptal Edilen Kayıtlar -->
+<h5 class="mb-3"><i class="bi bi-check-circle"></i> Tamamlanan / İptal Edilen <span class="badge bg-secondary"><%= completedEntries.length %></span></h5>
+<div class="card border-0 shadow-sm">
+  <div class="card-body p-0">
+    <% if (completedEntries.length === 0) { %>
+      <div class="text-center text-muted py-4">
+        <p class="mb-0">Tamamlanan kayıt yok</p>
+      </div>
+    <% } else { %>
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Tür</th>
+            <th>Kişi Adı</th>
+            <th>Beklenen Tarih</th>
+            <th>Not</th>
+            <th>Durum</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% completedEntries.forEach(e => { %>
+          <tr class="<%= e.status === 'iptal' ? 'table-light text-muted' : '' %>">
+            <td>
+              <% if (e.type === 'giris') { %>
+                <span class="badge bg-success"><i class="bi bi-arrow-down"></i> Giriş</span>
+              <% } else { %>
+                <span class="badge bg-danger"><i class="bi bi-arrow-up"></i> Çıkış</span>
+              <% } %>
+            </td>
+            <td><strong><%= e.person_name %></strong></td>
+            <td><%= e.planned_date ? new Date(e.planned_date).toLocaleDateString('tr-TR') : '-' %></td>
+            <td><%= e.notes || '-' %></td>
+            <td>
+              <% if (e.status === 'tamamlandi') { %>
+                <span class="badge bg-success">Tamamlandı</span>
+              <% } else { %>
+                <span class="badge bg-secondary">İptal</span>
+              <% } %>
+            </td>
+            <td>
+              <form method="POST" action="/giris-cikis/<%= e.id %>/sil" class="d-inline" onsubmit="return confirm('Bu kaydı silmek istediğinize emin misiniz?')">
+                <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+              </form>
+            </td>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+    <% } %>
+  </div>
+</div>
+
+<!-- Yeni Kayıt Modal -->
+<div class="modal fade" id="addEntryModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="POST" action="/giris-cikis/ekle">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-plus-lg"></i> Yeni Giriş/Çıkış Kaydı</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Tür *</label>
+            <select class="form-select" name="type" id="entryTypeSelect" required>
+              <option value="giris">Giriş</option>
+              <option value="cikis">Çıkış</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Kişi Adı *</label>
+            <input type="text" class="form-control" name="person_name" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label" id="eventDateLabel">Beklenen Giriş Tarihi *</label>
+            <input type="date" class="form-control" id="eventDateInput" name="expected_date" required>
+            <div class="form-text" id="eventDateHelp">İK’dan gelen planlı giriş tarihini seçin.</div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Not</label>
+            <textarea class="form-control" name="notes" rows="2"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+          <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Ekle</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<%- include('footer') %>
+
+<script>
+  (function() {
+    const typeSelect = document.getElementById('entryTypeSelect');
+    const dateLabel = document.getElementById('eventDateLabel');
+    const dateHelp = document.getElementById('eventDateHelp');
+    if (!typeSelect || !dateLabel || !dateHelp) return;
+
+    function updateDateFieldText() {
+      if (typeSelect.value === 'cikis') {
+        dateLabel.textContent = 'Beklenen Çıkış Tarihi *';
+        dateHelp.textContent = 'İK’dan gelen planlı çıkış tarihini seçin.';
+      } else {
+        dateLabel.textContent = 'Beklenen Giriş Tarihi *';
+        dateHelp.textContent = 'İK’dan gelen planlı giriş tarihini seçin.';
+      }
+    }
+
+    typeSelect.addEventListener('change', updateDateFieldText);
+    updateDateFieldText();
+  })();
+</script>

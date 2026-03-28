@@ -1,0 +1,116 @@
+<%- include('layout', { title: 'Yangın Alarm' }) %>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h4 class="mb-0"><i class="bi bi-exclamation-triangle"></i> Yangın Alarm Kayıtları</h4>
+  <button class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#addAlarmModal">
+    <i class="bi bi-plus-lg"></i> Alarm Kaydı Ekle
+  </button>
+</div>
+
+<!-- Filtre -->
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-body py-2">
+    <form method="GET" class="row g-2 align-items-center">
+      <div class="col-md-3">
+        <input type="date" class="form-control form-control-sm" name="date" value="<%= dateFilter %>" onchange="this.form.submit()">
+      </div>
+      <% if (dateFilter) { %>
+      <div class="col-md-2">
+        <a href="/yangin-alarm" class="btn btn-sm btn-outline-secondary w-100">Temizle</a>
+      </div>
+      <% } %>
+    </form>
+  </div>
+</div>
+
+<!-- Liste -->
+<div class="card border-0 shadow-sm">
+  <div class="card-body p-0">
+    <% if (alarms.length === 0) { %>
+      <div class="text-center text-muted py-5">
+        <i class="bi bi-exclamation-triangle fs-1"></i>
+        <p class="mt-2">Yangın alarm kaydı bulunamadı</p>
+      </div>
+    <% } else { %>
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Tarih/Saat</th>
+            <th>Konum</th>
+            <th>Tür</th>
+            <th>Açıklama</th>
+            <th>Alınan Önlem</th>
+            <th>Kaydeden</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% alarms.forEach(a => { %>
+          <tr class="<%= a.is_real ? 'table-danger' : '' %>">
+            <td class="text-nowrap"><small><%= new Date(a.alarm_time).toLocaleString('tr-TR') %></small></td>
+            <td><strong><%= a.location %></strong></td>
+            <td>
+              <% if (a.is_real) { %>
+                <span class="badge bg-danger"><i class="bi bi-fire"></i> Gerçek Alarm</span>
+              <% } else { %>
+                <span class="badge bg-warning text-dark">Yanlış Alarm</span>
+              <% } %>
+            </td>
+            <td><%= a.description || '-' %></td>
+            <td><%= a.action_taken || '-' %></td>
+            <td><small><%= a.recorder_name || '-' %></small></td>
+            <td>
+              <form method="POST" action="/yangin-alarm/<%= a.id %>/sil" class="d-inline" onsubmit="return confirm('Bu kaydı silmek istediğinize emin misiniz?')">
+                <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+              </form>
+            </td>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+    <% } %>
+  </div>
+</div>
+
+<!-- Alarm Ekle Modal -->
+<div class="modal fade" id="addAlarmModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="POST" action="/yangin-alarm/ekle">
+        <div class="modal-header bg-danger text-white">
+          <h5 class="modal-title"><i class="bi bi-exclamation-triangle"></i> Yangın Alarm Kaydı</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Konum *</label>
+            <input type="text" class="form-control" name="location" required placeholder="Örn: 3. Kat Koridor, Oda 205">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Alarm Türü *</label>
+            <select class="form-select" name="is_real" required>
+              <option value="false">Yanlış Alarm</option>
+              <option value="true">Gerçek Alarm</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Açıklama</label>
+            <textarea class="form-control" name="description" rows="2" placeholder="Ne oldu?"></textarea>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Alınan Önlem</label>
+            <textarea class="form-control" name="action_taken" rows="2" placeholder="Ne yapıldı?"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+          <button type="submit" class="btn btn-danger"><i class="bi bi-check-lg"></i> Kaydet</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<%- include('footer') %>

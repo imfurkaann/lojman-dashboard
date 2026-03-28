@@ -1,0 +1,1613 @@
+<%- include('../layout', { title: `Oda ${room.room_number}` }) %>
+
+<%
+const defaultDepartmentOptions = [
+  'Güvenlik',
+  'Housekeeping',
+  'Resepsiyon',
+  'Ön Büro',
+  'Teknik Servis',
+  'Kat Hizmetleri',
+  'Yiyecek & İçecek',
+  'Mutfak',
+  'Muhasebe',
+  'İnsan Kaynakları',
+  'Satış & Pazarlama',
+  'Çamaşırhane',
+  'Bellboy',
+  'Gece Denetimi'
+];
+const dynamicDepartmentOptions = (departments || []).map(d => d.department).filter(Boolean);
+const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dynamicDepartmentOptions]))
+  .sort((a, b) => a.localeCompare(b, 'tr'));
+%>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <a href="javascript:history.back();" class="text-decoration-none text-muted"><i class="bi bi-arrow-left"></i> Geri Dön</a>
+    <h4 class="mt-1 mb-0">
+      <i class="bi bi-door-open"></i> Oda <%= room.room_number %>
+      <% if (room.status === 'bos') { %>
+        <span class="badge bg-success fs-6">Boş</span>
+      <% } else if (room.status === 'dolu') { %>
+        <span class="badge bg-danger fs-6">Dolu</span>
+      <% } else if (room.status === 'kismi_dolu') { %>
+        <span class="badge bg-warning text-dark fs-6">Kısmi Dolu</span>
+      <% } else if (room.status === 'depo') { %>
+        <span class="badge bg-info text-dark fs-6"><i class="bi bi-box-seam"></i> Depo</span>
+      <% } else { %>
+        <span class="badge bg-secondary fs-6">Bakımda</span>
+      <% } %>
+    </h4>
+  </div>
+  <div>
+    <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#editRoomModal">
+      <i class="bi bi-pencil"></i> Düzenle
+    </button>
+    <form method="POST" action="/odalar/<%= room.id %>/sil" class="d-inline" onsubmit="return confirm('Bu odayı silmek istediğinize emin misiniz?')">
+      <button class="btn btn-outline-danger btn-sm"><i class="bi bi-trash"></i> Sil</button>
+    </form>
+  </div>
+</div>
+
+<% if (errorMessage) { %>
+  <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
+<% } %>
+
+<!-- Oda Bilgileri -->
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm text-center">
+      <div class="card-body">
+        <% if (room.status === 'depo') { %>
+          <h6 class="text-muted">Kullanım</h6>
+          <h3><i class="bi bi-box-seam"></i></h3>
+          <small class="text-info">Depo</small>
+        <% } else { %>
+          <h6 class="text-muted">Kapasite</h6>
+          <h3><%= occupants.length %>/<%= room.capacity %></h3>
+        <% } %>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm text-center">
+      <div class="card-body">
+        <h6 class="text-muted">Kat</h6>
+        <h3><%= room.floor || '-' %></h3>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card border-0 shadow-sm">
+      <div class="card-body">
+        <h6 class="text-muted">Açıklama</h6>
+        <p class="mb-0"><%= room.description || 'Açıklama yok' %></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Tabs -->
+<ul class="nav nav-tabs mb-3" role="tablist">
+  <li class="nav-item">
+    <a class="nav-link active" data-bs-toggle="tab" href="#personeller">
+      <i class="bi bi-people"></i> Personeller (<%= occupants.length %>)
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" data-bs-toggle="tab" href="#sorunlar">
+      <i class="bi bi-exclamation-circle"></i> Sorunlar (<%= (openRoomIssueCount || 0) + (openInventoryIssueCount || 0) %>)
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" data-bs-toggle="tab" href="#envanter">
+      <i class="bi bi-box-seam"></i> Demirbaş (<%= inventory.length %>)
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" data-bs-toggle="tab" href="#gecmis">
+      <i class="bi bi-clock-history"></i> Geçmiş (<%= (roomHistory || []).length %>)
+    </a>
+  </li>
+</ul>
+
+<div class="tab-content">
+  <!-- Personeller Tab -->
+  <div class="tab-pane fade show active" id="personeller">
+    <% if (room.status !== 'depo') { %>
+      <div class="d-flex gap-2 mb-3">
+        <button class="btn btn-sm btn-outline-primary" id="showSelectPersonnelBtn">
+          <i class="bi bi-list-check"></i> Listeden Seç
+        </button>
+        <button class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#addPersonnelAndAssignModal">
+          <i class="bi bi-plus-lg"></i> Yeni Kayıt
+        </button>
+      </div>
+
+      <!-- Personel Seçme Alanı (Gizli) -->
+      <div id="selectPersonnelSection" class="card border-0 shadow-sm mb-4" style="display: none;">
+        <div class="card-header bg-light d-flex justify-content-between align-items-center">
+          <h6 class="mb-0"><i class="bi bi-people"></i> Odaya Atanacak Personeli Seçin</h6>
+          <button type="button" class="btn-close btn-sm" id="hideSelectPersonnelBtn"></button>
+        </div>
+        <div class="card-body">
+          <!-- Filtreler -->
+          <div class="row g-2 mb-3">
+            <div class="col-md-4">
+              <input type="text" class="form-control form-control-sm" id="personnelSearchInput" placeholder="İsim veya telefon ara...">
+            </div>
+            <div class="col-md-3">
+              <select class="form-select form-select-sm" id="personnelDepartmentFilter">
+                <option value="">Tüm Departmanlar</option>
+                <% departmentOptions.forEach(dep => { %>
+                  <option value="<%= dep %>"><%= dep %></option>
+                <% }) %>
+              </select>
+            </div>
+          </div>
+          <!-- Personel Listesi -->
+          <div id="personnelListContainer" class="table-responsive">
+            <% if (availablePersonnel.length === 0) { %>
+              <div class="text-center text-muted py-4">Atanabilir personel yok.</div>
+            <% } else { %>
+              <table class="table table-hover table-sm">
+                <thead class="table-light">
+                  <tr>
+                    <th>Ad Soyad</th>
+                    <th>TC Kimlik</th>
+                    <th>Cinsiyet</th>
+                    <th>Departman</th>
+                    <th>İlk Kayıt</th>
+                    <th>Durum</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% availablePersonnel.forEach(p => { %>
+                    <tr class="personnel-list-item" 
+                        data-name="<%= p.first_name.toLowerCase() %> <%= p.last_name.toLowerCase() %>" 
+                        data-phone="<%= p.phone || '' %>" 
+                        data-department="<%= p.department || '' %>">
+                      <td><strong><%= p.first_name %> <%= p.last_name %></strong></td>
+                      <td><%= p.tc_number || '-' %></td>
+                      <td><%= p.gender === 'erkek' ? 'Erkek' : (p.gender === 'kadin' ? 'Kadın' : '-') %></td>
+                      <td><%= p.department || '-' %></td>
+                      <td><%= p.created_at ? new Date(p.created_at).toLocaleDateString('tr-TR') : '-' %></td>
+                      <td>
+                        <% if (p.status === 'cikis_yapti') { %>
+                          <span class="badge bg-secondary">Çıkış Yapmış</span>
+                        <% } else if (p.status === 'bosta') { %>
+                          <span class="badge bg-warning text-dark">Boşta</span>
+                        <% } else { %>
+                          <span class="badge bg-success">Aktif</span>
+                        <% } %>
+                      </td>
+                      <td>
+                        <button type="button" class="btn btn-sm btn-outline-primary assign-btn" 
+                                data-bs-toggle="modal" 
+                                data-bs-target="#assignAndHandoverModal"
+                                data-personnel-id="<%= p.id %>"
+                                data-personnel-name="<%= p.first_name %> <%= p.last_name %>">
+                          <i class="bi bi-arrow-right-circle"></i> Ata
+                        </button>
+                      </td>
+                    </tr>
+                  <% }) %>
+                </tbody>
+              </table>
+            <% } %>
+          </div>
+        </div>
+      </div>
+    <% } %>
+
+    <% if (occupants.length === 0) { %>
+      <div class="text-center text-muted py-4">Bu odada personel yok</div>
+    <% } else { %>
+    <div class="table-responsive">
+      <table class="table table-hover">
+        <thead class="table-light">
+          <tr><th>Ad Soyad</th><th>Cinsiyet</th><th>Telefon</th><th>Departman</th><th>Giriş Tarihi</th><th></th></tr>
+        </thead>
+        <tbody>
+          <% occupants.forEach(p => { %>
+          <tr>
+            <td><a href="/personel/<%= p.id %>"><%= p.first_name %> <%= p.last_name %></a></td>
+            <td><%= p.gender === 'erkek' ? 'Erkek' : 'Kadın' %></td>
+            <td><%= p.phone || '-' %></td>
+            <td><%= p.department || '-' %></td>
+            <td><%= p.check_in_date ? new Date(p.check_in_date).toLocaleDateString('tr-TR') : '-' %></td>
+            <td><a href="/personel/<%= p.id %>" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a></td>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+    <% } %>
+  </div>
+
+  <!-- Sorunlar Tab -->
+  <div class="tab-pane fade" id="sorunlar">
+    <button class="btn btn-sm btn-outline-danger mb-3" data-bs-toggle="modal" data-bs-target="#addIssueModal">
+      <i class="bi bi-plus-lg"></i> Sorun Ekle
+    </button>
+    <div class="mb-3 p-3 border rounded bg-light">
+      <h6 class="mb-2"><i class="bi bi-house-exclamation"></i> Oda Sorunları (Açık: <%= openRoomIssueCount || 0 %>)</h6>
+      <% if (roomIssues.length === 0) { %>
+        <div class="text-muted">Kayıtlı oda sorunu yok</div>
+      <% } else { %>
+      <div class="table-responsive">
+        <table class="table table-hover mb-0">
+          <thead class="table-light">
+            <tr><th>Başlık</th><th>Açıklama</th><th>Durum</th><th>Açılış</th><th>Kapanış</th><th></th></tr>
+          </thead>
+          <tbody>
+            <% roomIssues.forEach(i => { %>
+            <tr>
+              <td><strong><%= i.title %></strong></td>
+              <td><%= i.description || '-' %></td>
+              <td>
+                <% if (i.status === 'acik') { %>
+                  <span class="badge bg-danger">Açık</span>
+                <% } else { %>
+                  <span class="badge bg-success">Çözüldü</span>
+                <% } %>
+              </td>
+              <td><small><%= i.created_at ? new Date(i.created_at).toLocaleDateString('tr-TR') : '-' %></small></td>
+              <td><small><%= i.resolved_at ? new Date(i.resolved_at).toLocaleDateString('tr-TR') : '-' %></small></td>
+              <td>
+                <form method="POST" action="/odalar/<%= room.id %>/sorun/<%= i.id %>/guncelle" class="d-inline">
+                  <select name="status" class="form-select form-select-sm d-inline w-auto" onchange="this.form.submit()">
+                    <option value="acik" <%= i.status === 'acik' ? 'selected' : '' %>>Açık</option>
+                    <option value="cozuldu" <%= i.status === 'cozuldu' ? 'selected' : '' %>>Çözüldü</option>
+                  </select>
+                </form>
+                <form method="POST" action="/odalar/<%= room.id %>/sorun/<%= i.id %>/sil" class="d-inline" onsubmit="return confirm('Bu sorun kaydını silmek istiyor musunuz?')">
+                  <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                </form>
+              </td>
+            </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+      <% } %>
+    </div>
+
+    <div class="p-3 border rounded bg-light">
+      <h6 class="mb-2"><i class="bi bi-box-seam"></i> Demirbaş Sorunları (Açık: <%= openInventoryIssueCount || 0 %>)</h6>
+      <% if (inventoryIssues.length === 0) { %>
+        <div class="text-muted">Kayıtlı demirbaş sorunu yok</div>
+      <% } else { %>
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead class="table-light">
+          <tr><th>Demirbaş</th><th>Etiket</th><th>Açıklama</th><th>Durum</th><th>Açılış</th><th>Kapanış</th><th></th></tr>
+        </thead>
+        <tbody>
+          <% inventoryIssues.forEach(i => { %>
+          <tr>
+            <td><strong><%= i.inventory_item_name || i.title %></strong></td>
+            <td>
+              <% if (i.issue_tag === 'eksik') { %>
+                <span class="badge bg-warning text-dark">Eksik</span>
+              <% } else if (i.issue_tag === 'arizali') { %>
+                <span class="badge bg-danger">Arızalı</span>
+              <% } else if (i.issue_tag === 'kirik') { %>
+                <span class="badge bg-danger">Kırık</span>
+              <% } else if (i.issue_tag === 'calismiyor') { %>
+                <span class="badge bg-danger">Çalışmıyor</span>
+              <% } else if (i.issue_tag === 'kayip') { %>
+                <span class="badge bg-dark">Kayıp</span>
+              <% } else if (i.issue_tag === 'diger') { %>
+                <span class="badge bg-secondary">Diğer</span>
+              <% } else { %>
+                <span class="badge bg-secondary">-</span>
+              <% } %>
+            </td>
+            <td><%= i.description || '-' %></td>
+            <td>
+              <% if (i.status === 'acik') { %>
+                <span class="badge bg-danger">Açık</span>
+              <% } else { %>
+                <span class="badge bg-success">Çözüldü</span>
+              <% } %>
+            </td>
+            <td><small><%= i.created_at ? new Date(i.created_at).toLocaleDateString('tr-TR') : '-' %></small></td>
+            <td><small><%= i.resolved_at ? new Date(i.resolved_at).toLocaleDateString('tr-TR') : '-' %></small></td>
+            <td>
+              <form method="POST" action="/odalar/<%= room.id %>/sorun/<%= i.id %>/guncelle" class="d-inline">
+                <select name="status" class="form-select form-select-sm d-inline w-auto" onchange="this.form.submit()">
+                  <option value="acik" <%= i.status === 'acik' ? 'selected' : '' %>>Açık</option>
+                  <option value="cozuldu" <%= i.status === 'cozuldu' ? 'selected' : '' %>>Çözüldü</option>
+                </select>
+              </form>
+              <form method="POST" action="/odalar/<%= room.id %>/sorun/<%= i.id %>/sil" class="d-inline" onsubmit="return confirm('Bu sorun kaydını silmek istiyor musunuz?')">
+                <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+              </form>
+            </td>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+    <% } %>
+    </div>
+  </div>
+
+  <!-- Demirbaş Tab -->
+  <div class="tab-pane fade" id="envanter">
+    <button class="btn btn-sm btn-outline-success mb-3" data-bs-toggle="modal" data-bs-target="#addInventoryModal">
+      <i class="bi bi-plus-lg"></i> Demirbaş Ekle
+    </button>
+
+    <% if (inventory.length === 0) { %>
+      <div class="text-center text-muted py-4">Bu odada kayıtlı demirbaş yok</div>
+    <% } else { %>
+    <div class="table-responsive">
+      <table class="table table-hover">
+        <thead class="table-light">
+          <tr><th>Eşya</th><th>Adet</th><th>Durum</th><th>Not</th><th></th></tr>
+        </thead>
+        <tbody>
+          <% inventory.forEach(inv => { %>
+          <tr>
+            <td><%= inv.item_name %></td>
+            <td>
+              <% if ((inv.item_name || '').toLowerCase() === 'oda anahtarı') { %>
+                <span id="key-count-<%= room.id %>"><%= inv.quantity %>/<%= requiredKeyCount %></span>
+              <% } else { %>
+                <%= inv.quantity %>
+              <% } %>
+            </td>
+            <td>
+              <% if (inv.condition === 'saglam' || inv.condition === 'iyi') { %>
+                <span class="badge bg-success">Sağlam</span>
+              <% } else if (inv.condition === 'eksik') { %>
+                <span class="badge bg-warning text-dark">Eksik</span>
+              <% } else if (inv.condition === 'arizali' || inv.condition === 'kotu') { %>
+                <span class="badge bg-danger">Arızalı</span>
+              <% } else if (inv.condition === 'kirik') { %>
+                <span class="badge bg-danger">Kırık</span>
+              <% } else if (inv.condition === 'calismiyor') { %>
+                <span class="badge bg-danger">Çalışmıyor</span>
+              <% } else if (inv.condition === 'kayip') { %>
+                <span class="badge bg-dark">Kayıp</span>
+              <% } else { %>
+                <span class="badge bg-secondary">Diğer</span>
+              <% } %>
+            </td>
+            <td><%= inv.notes || '-' %></td>
+            <td>
+              <button
+                type="button"
+                class="btn btn-sm btn-outline-primary"
+                title="Düzenle"
+                data-bs-toggle="modal"
+                data-bs-target="#editInventoryModal"
+                data-item-id="<%= inv.id %>"
+                data-item-name="<%= inv.item_name %>"
+                data-item-quantity="<%= inv.quantity %>"
+                data-item-condition="<%= inv.condition %>"
+                data-item-notes="<%= inv.notes || '' %>">
+                <i class="bi bi-pencil"></i>
+              </button>
+              <button
+                type="button"
+                class="btn btn-sm btn-outline-warning report-item-issue-btn"
+                title="Sorun Bildir"
+                data-bs-toggle="modal"
+                data-bs-target="#addInventoryIssueModal"
+                data-item-name="<%= inv.item_name %>">
+                <i class="bi bi-exclamation-triangle"></i>
+              </button>
+              <form method="POST" action="/odalar/<%= room.id %>/envanter/<%= inv.id %>/sil" class="d-inline" onsubmit="return confirm('Bu eşyayı silmek istediğinize emin misiniz?')">
+                <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+              </form>
+            </td>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+    <% } %>
+  </div>
+
+  <!-- Geçmiş Tab -->
+  <div class="tab-pane fade" id="gecmis">
+    <% if (!roomHistory || roomHistory.length === 0) { %>
+      <div class="text-center text-muted py-4">Bu oda için giriş/çıkış geçmişi bulunamadı</div>
+    <% } else { %>
+      <div class="row g-2 mb-3">
+        <div class="col-md-6 col-lg-5">
+          <input
+            type="text"
+            class="form-control form-control-sm"
+            id="historySearchInput"
+            placeholder="İsim, TC veya departman ara..."
+          >
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-hover">
+          <thead class="table-light">
+            <tr>
+              <th>İsim Soyisim</th>
+              <th>TC Kimlik</th>
+              <th>Departman</th>
+              <th>Giriş Tarihi</th>
+              <th>Çıkış Tarihi</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="historyTableBody">
+            <% roomHistory.forEach(h => { %>
+              <% const personName = `${h.first_name || '-'} ${h.last_name || ''}`.trim(); %>
+              <% const entryText = h.entry_at ? new Date(h.entry_at).toLocaleString('tr-TR') : '-'; %>
+              <% const exitText = h.exit_at ? new Date(h.exit_at).toLocaleString('tr-TR') : '-'; %>
+              <% const filterText = `${personName} ${h.tc_number || ''} ${h.department || ''} ${entryText} ${exitText}`.toLowerCase(); %>
+              <tr>
+                <td data-history-filter="<%= filterText %>"><strong><%= personName || '-' %></strong></td>
+                <td><%= h.tc_number || '-' %></td>
+                <td><%= h.department || '-' %></td>
+                <td><%= entryText %></td>
+                <td><%= exitText %></td>
+                <td>
+                  <% if (h.personnel_id) { %>
+                    <a href="/personel/<%= h.personnel_id %>" class="btn btn-sm btn-outline-primary" title="Personel Detayı">
+                      <i class="bi bi-eye"></i>
+                    </a>
+                  <% } %>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+  </div>
+</div>
+
+<!-- Oda Düzenle Modal -->
+<div class="modal fade" id="editRoomModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="POST" action="/odalar/<%= room.id %>/guncelle">
+        <div class="modal-header">
+          <h5 class="modal-title">Oda Düzenle</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Kapasite</label>
+            <input type="number" class="form-control" name="capacity" value="<%= room.capacity %>" min="1" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Kat</label>
+            <select class="form-select" name="floor">
+              <option value="">Kat Seçin</option>
+              <% floors.forEach(f => { %>
+                <option value="<%= f %>" <%= room.floor === f ? 'selected' : '' %>><%= f %></option>
+              <% }) %>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Açıklama</label>
+            <textarea class="form-control" name="description" rows="2"><%= room.description || '' %></textarea>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Durum</label>
+            <select class="form-select" name="status">
+              <option value="bos" <%= room.status === 'bos' ? 'selected' : '' %>>Boş</option>
+              <option value="dolu" <%= room.status === 'dolu' ? 'selected' : '' %>>Dolu</option>
+              <option value="kismi_dolu" <%= room.status === 'kismi_dolu' ? 'selected' : '' %>>Kısmi Dolu</option>
+              <option value="bakimda" <%= room.status === 'bakimda' ? 'selected' : '' %>>Bakımda</option>
+              <option value="depo" <%= room.status === 'depo' ? 'selected' : '' %>>Depo</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+          <button type="submit" class="btn btn-primary">Kaydet</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Yeni Personel Ekle ve Ata Modal -->
+<div class="modal fade" id="addPersonnelAndAssignModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <form method="POST" action="/personel/ekle-ve-ata" enctype="multipart/form-data">
+        <input type="hidden" name="room_id" value="<%= room.id %>">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-person-plus"></i> Odaya Yeni Personel Ekle</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <!-- Personel Bilgileri -->
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Ad *</label>
+              <input type="text" class="form-control" name="first_name" required>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Soyad *</label>
+              <input type="text" class="form-control" name="last_name" required>
+            </div>
+          </div>
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Cinsiyet *</label>
+              <select class="form-select" name="gender" required>
+                <option value="erkek">Erkek</option>
+                <option value="kadin">Kadın</option>
+              </select>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Telefon</label>
+              <input type="tel" class="form-control" name="phone">
+            </div>
+          </div>
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Departman</label>
+              <select class="form-select" name="department">
+                <option value="">Departman Seçin</option>
+                <% departmentOptions.forEach(dep => { %>
+                  <option value="<%= dep %>"><%= dep %></option>
+                <% }) %>
+              </select>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label">TC Kimlik No *</label>
+              <input type="text" class="form-control" name="tc_number" required>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Fotoğraf</label>
+            <button type="button" class="btn btn-outline-primary w-100" id="roomAddPhotoBtn">
+              <i class="bi bi-camera"></i> Fotoğraf Ekle
+            </button>
+
+            <div id="roomPhotoOptions" class="mt-2" style="display:none;">
+              <div class="d-flex gap-2">
+                <button type="button" class="btn btn-outline-secondary flex-fill" id="roomChooseCameraBtn">
+                  <i class="bi bi-camera-video"></i> Çek
+                </button>
+                <button type="button" class="btn btn-outline-secondary flex-fill" id="roomChooseUploadBtn">
+                  <i class="bi bi-upload"></i> Yükle
+                </button>
+              </div>
+
+              <div class="mt-2" id="roomCameraInputWrap" style="display:none;">
+                <div class="border rounded p-2">
+                  <video id="roomCameraPreview" class="w-100 rounded" autoplay playsinline style="max-height: 260px; background:#000; transform: scaleX(-1);"></video>
+                  <img id="roomCapturedPreview" class="w-100 rounded" alt="Çekilen fotoğraf" style="display:none; max-height: 260px; object-fit: contain;">
+                  <div class="d-flex gap-2 mt-2">
+                    <button type="button" class="btn btn-sm btn-primary flex-fill" id="roomTakePhotoBtn">
+                      <i class="bi bi-camera"></i> Fotoğraf Çek
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-danger" id="roomStopCameraBtn" disabled>
+                      <i class="bi bi-x-lg"></i>
+                    </button>
+                  </div>
+                  <small class="text-muted d-block mt-2">İlk kullanımda kamera izni isteyebilir.</small>
+                </div>
+                <input type="hidden" name="captured_photo" id="roomCapturedPhotoFlag" value="0">
+              </div>
+
+              <div class="mt-2" id="roomUploadInputWrap" style="display:none;">
+                <input type="file" class="form-control" id="roomUploadPhotoInput" name="photo" accept="image/jpeg,image/png,image/gif,image/*">
+                <small class="text-muted">JPEG, PNG, GIF (Max 5MB)</small>
+              </div>
+
+              <small class="text-muted d-block mt-1">Max 5MB</small>
+            </div>
+          </div>
+          <hr>
+          <!-- Zimmet Bilgileri -->
+          <h5 class="mb-3">Zimmet Bilgileri</h5>
+          <div class="border rounded p-3">
+            <h6 class="mb-3"><i class="bi bi-clipboard-check"></i> Demirbaş Teslim Kontrolü</h6>
+            <div class="border rounded p-2 mb-3">
+              <div class="d-flex justify-content-between align-items-center">
+                <div>
+                  <strong>Zimmet Formu</strong>
+                  <small class="text-muted d-block">İmzalandı mı?</small>
+                </div>
+                <div class="form-check m-0">
+                  <input class="form-check-input" type="checkbox" id="formSignedCheck" name="form_signed">
+                  <label class="form-check-label" for="formSignedCheck">Evet</label>
+                </div>
+              </div>
+            </div>
+            <% requiredInventoryItems.forEach((itemName, idx) => { %>
+              <div class="border rounded p-2 mb-2 handover-item" data-item-name="<%= itemName %>">
+                <div class="mb-2">
+                  <strong><%= itemName %></strong>
+                  <div class="form-check mt-1 mb-3">
+                    <input class="form-check-input handover-delivered" type="radio" name="delivery_<%= idx %>" id="delivered_yes_<%= idx %>" value="yes" checked>
+                    <label class="form-check-label" for="delivered_yes_<%= idx %>">✓ Sağlam Teslim Edildi</label>
+                  </div>
+                  <div class="form-check">
+                    <input class="form-check-input handover-delivered-no" type="radio" name="delivery_<%= idx %>" id="delivered_no_<%= idx %>" value="no">
+                    <label class="form-check-label" for="delivered_no_<%= idx %>">✗ Teslim Edilmedi</label>
+                  </div>
+                </div>
+                <div class="handover-problem" style="display:none; padding-top: 10px; border-top: 1px solid #dee2e6;">
+                  <div class="mb-2">
+                    <label class="form-label form-label-sm">Sorun Türü *</label>
+                    <select class="form-select form-select-sm handover-tag">
+                      <option value="">Seçin</option>
+                      <option value="eksik">Eksik</option>
+                      <option value="arizali">Arızalı</option>
+                      <option value="kirik">Kırık</option>
+                      <option value="calismiyor">Çalışmıyor</option>
+                      <option value="kayip">Kayıp</option>
+                      <option value="diger">Diğer</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="form-label form-label-sm">Neden Teslim Edilmedi? *</label>
+                    <textarea class="form-control form-control-sm handover-description" rows="3" placeholder="Sorunu detaylı açıklayın..."></textarea>
+                  </div>
+                </div>
+              </div>
+            <% }) %>
+            <div class="border rounded p-2 mt-3">
+              <div class="d-flex justify-content-between align-items-center">
+                <div>
+                  <strong>Oda Anahtarı</strong>
+                  <small class="text-muted d-block">Olması gereken: <%= requiredKeyCount %> | Elde: <%= keyCountInHand %></small>
+                </div>
+                <div class="form-check m-0">
+                  <input class="form-check-input" type="checkbox" id="keyDeliveredCheck" name="key_delivered" value="1">
+                  <label class="form-check-label" for="keyDeliveredCheck">Teslim Edildi</label>
+                </div>
+              </div>
+            </div>
+          </div>
+          <input type="hidden" name="handover_payload" id="handoverPayloadInput">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+          <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Kaydet ve Ata</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Personel Seçme Modal (Listeden Seç) -->
+<div class="modal fade" id="selectPersonnelModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-people"></i> Personel Seç</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" style="max-height: 500px; overflow-y: auto;">
+        <% if (availablePersonnel.length === 0) { %>
+          <div class="text-center text-muted py-5">
+            <i class="bi bi-inbox fs-1"></i>
+            <p class="mt-2">Oda atanmamış personel yok</p>
+            <small>Tüm personel zaten bir odaya atanmış durumda</small>
+          </div>
+        <% } else { %>
+          <div class="list-group">
+            <% availablePersonnel.forEach(p => { %>
+              <form method="POST" action="/odalar/<%= room.id %>/personel-ata" class="list-group-item list-group-item-action p-3" onsubmit="event.preventDefault(); showKeyDeliveryConfirm(<%= p.id %>, '<%= p.first_name %> <%= p.last_name %>', <%= room.id %>);">
+                <input type="hidden" name="personnel_id" value="<%= p.id %>">
+                <div class="d-flex w-100 justify-content-between">
+                  <div>
+                    <h6 class="mb-1"><strong><%= p.first_name %> <%= p.last_name %></strong></h6>
+                    <small class="text-muted">
+                      <i class="bi bi-phone"></i> <%= p.phone || '-' %> | 
+                      <i class="bi bi-briefcase"></i> <%= p.department || '-' %>
+                    </small>
+                  </div>
+                  <button type="submit" class="btn btn-sm btn-primary align-self-center">
+                    <i class="bi bi-check-lg"></i> Seç
+                  </button>
+                </div>
+              </form>
+            <% }) %>
+          </div>
+        <% } %>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="assignAndHandoverModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <form method="POST" action="/odalar/<%= room.id %>/personel-ata" id="assignAndHandoverForm">
+        <input type="hidden" name="personnel_id" id="assignPersonnelId">
+        <div class="modal-header">
+          <h5 class="modal-title">Personel Ata ve Zimmetle</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body" style="max-height: 600px; overflow-y: auto;">
+          <p><strong>Personel:</strong> <span id="assignPersonnelName"></span></p>
+          
+          <div class="border rounded p-3">
+            <h6 class="mb-3"><i class="bi bi-clipboard-check"></i> Demirbaş Teslim Kontrolü</h6>
+
+            <div class="border rounded p-2 mb-3">
+              <div class="d-flex justify-content-between align-items-center">
+                <div>
+                  <strong>Zimmet Formu</strong>
+                  <small class="text-muted d-block">İmzalandı mı?</small>
+                </div>
+                <div class="form-check m-0">
+                  <input class="form-check-input" type="checkbox" id="assignFormSignedCheck" name="form_signed">
+                  <label class="form-check-label" for="assignFormSignedCheck">Evet</label>
+                </div>
+              </div>
+            </div>
+
+            <% requiredInventoryItems.forEach((itemName, idx) => { %>
+              <div class="border rounded p-2 mb-2 handover-item" data-item-name="<%= itemName %>">
+                <div class="mb-2">
+                  <strong><%= itemName %></strong>
+                  <div class="form-check mt-1 mb-3">
+                    <input class="form-check-input handover-delivered" type="radio" name="assign_delivery_<%= idx %>" id="assign_delivered_yes_<%= idx %>" value="yes" checked>
+                    <label class="form-check-label" for="assign_delivered_yes_<%= idx %>">✓ Sağlam Teslim Edildi</label>
+                  </div>
+                  <div class="form-check">
+                    <input class="form-check-input handover-delivered-no" type="radio" name="assign_delivery_<%= idx %>" id="assign_delivered_no_<%= idx %>" value="no">
+                    <label class="form-check-label" for="assign_delivered_no_<%= idx %>">✗ Teslim Edilmedi</label>
+                  </div>
+                </div>
+                <div class="handover-problem" style="display:none; padding-top: 10px; border-top: 1px solid #dee2e6;">
+                  <div class="mb-2">
+                    <label class="form-label form-label-sm">Sorun Türü *</label>
+                    <select class="form-select form-select-sm handover-tag">
+                      <option value="">Seçin</option>
+                      <option value="eksik">Eksik</option>
+                      <option value="arizali">Arızalı</option>
+                      <option value="kirik">Kırık</option>
+                      <option value="calismiyor">Çalışmıyor</option>
+                      <option value="kayip">Kayıp</option>
+                      <option value="diger">Diğer</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="form-label form-label-sm">Neden Teslim Edilmedi? *</label>
+                    <textarea class="form-control form-control-sm handover-description" rows="3" placeholder="Sorunu detaylı açıklayın..."></textarea>
+                  </div>
+                </div>
+              </div>
+            <% }) %>
+
+            <div class="border rounded p-2 mt-3">
+              <div class="d-flex justify-content-between align-items-center">
+                <div>
+                  <strong>Oda Anahtarı</strong>
+                  <small class="text-muted d-block">Olması gereken: <%= requiredKeyCount %> | Elde: <%= keyCountInHand %></small>
+                </div>
+                <div class="form-check m-0">
+                  <input class="form-check-input" type="checkbox" id="assignKeyDeliveredCheck" name="key_delivered" value="1">
+                  <label class="form-check-label" for="assignKeyDeliveredCheck">Teslim Edildi</label>
+                </div>
+              </div>
+            </div>
+          </div>
+          <input type="hidden" name="handover_payload" id="assignHandoverPayloadInput">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+          <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Ata ve Zimmetle</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Oda Düzenle Modal -->
+<div class="modal fade" id="editRoomModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="POST" action="/odalar/<%= room.id %>/guncelle">
+        <div class="modal-header">
+          <h5 class="modal-title">Oda Düzenle</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Kapasite</label>
+            <input type="number" class="form-control" name="capacity" value="<%= room.capacity %>" min="1" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Kat</label>
+            <select class="form-select" name="floor">
+              <option value="">Kat Seçin</option>
+              <% floors.forEach(f => { %>
+                <option value="<%= f %>" <%= room.floor === f ? 'selected' : '' %>><%= f %></option>
+              <% }) %>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Açıklama</label>
+            <textarea class="form-control" name="description" rows="2"><%= room.description || '' %></textarea>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Durum</label>
+            <select class="form-select" name="status">
+              <option value="bos" <%= room.status === 'bos' ? 'selected' : '' %>>Boş</option>
+              <option value="dolu" <%= room.status === 'dolu' ? 'selected' : '' %>>Dolu</option>
+              <option value="kismi_dolu" <%= room.status === 'kismi_dolu' ? 'selected' : '' %>>Kısmi Dolu</option>
+              <option value="bakimda" <%= room.status === 'bakimda' ? 'selected' : '' %>>Bakımda</option>
+              <option value="depo" <%= room.status === 'depo' ? 'selected' : '' %>>Depo</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+          <button type="submit" class="btn btn-primary">Kaydet</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Sorun Ekle Modal -->
+<div class="modal fade" id="addIssueModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="POST" action="/odalar/<%= room.id %>/sorun-ekle">
+        <div class="modal-header">
+          <h5 class="modal-title">Sorun Ekle</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Sorun Başlığı *</label>
+            <input type="text" class="form-control" name="title" required placeholder="Örn: Klima çalışmıyor">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Açıklama</label>
+            <textarea class="form-control" name="description" rows="3"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+          <button type="submit" class="btn btn-danger">Sorun Ekle</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Demirbaş Ekle Modal -->
+<div class="modal fade" id="addInventoryModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="POST" action="/odalar/<%= room.id %>/envanter-ekle">
+        <div class="modal-header">
+          <h5 class="modal-title">Demirbaş Ekle</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Demirbaş Seç *</label>
+            <select class="form-select" name="item_name_select" id="inventoryItemSelect" required>
+              <option value="">Listeden seçin</option>
+              <% (equipmentItems || []).forEach(item => { %>
+                <option value="<%= item %>"><%= item %></option>
+              <% }) %>
+              <option value="__manual__">Listede yok (elle gir)</option>
+            </select>
+          </div>
+          <div class="mb-3" id="manualInventoryNameWrap" style="display:none;">
+            <label class="form-label">Elle Demirbaş Adı *</label>
+            <input type="text" class="form-control" name="item_name_manual" id="manualInventoryNameInput" placeholder="Örn: Saç Kurutma Makinesi">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Adet</label>
+            <input type="number" class="form-control" name="quantity" value="1" min="1">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Durum</label>
+            <select class="form-select" name="condition">
+              <option value="saglam">Sağlam</option>
+              <option value="eksik">Eksik</option>
+              <option value="arizali">Arızalı</option>
+              <option value="kirik">Kırık</option>
+              <option value="calismiyor">Çalışmıyor</option>
+              <option value="kayip">Kayıp</option>
+              <option value="diger">Diğer</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Not</label>
+            <textarea class="form-control" name="notes" rows="2"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+          <button type="submit" class="btn btn-success">Ekle</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Demirbaş Düzenle Modal -->
+<div class="modal fade" id="editInventoryModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="POST" id="editInventoryForm" action="/odalar/<%= room.id %>/envanter/0/guncelle">
+        <div class="modal-header">
+          <h5 class="modal-title">Demirbaş Düzenle</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Demirbaş</label>
+            <input type="text" class="form-control" id="editInventoryItemName" readonly>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Adet</label>
+            <input type="number" class="form-control" name="quantity" id="editInventoryQuantity" min="0" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Durum</label>
+            <select class="form-select" name="condition" id="editInventoryCondition" required>
+              <option value="saglam">Sağlam</option>
+              <option value="eksik">Eksik</option>
+              <option value="arizali">Arızalı</option>
+              <option value="kirik">Kırık</option>
+              <option value="calismiyor">Çalışmıyor</option>
+              <option value="kayip">Kayıp</option>
+              <option value="diger">Diğer</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Not</label>
+            <textarea class="form-control" name="notes" id="editInventoryNotes" rows="2"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+          <button type="submit" class="btn btn-primary">Kaydet</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Demirbaş Sorunu Ekle Modal -->
+<div class="modal fade" id="addInventoryIssueModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="POST" action="/odalar/<%= room.id %>/demirbas-sorun-ekle">
+        <div class="modal-header">
+          <h5 class="modal-title">Demirbaş Sorunu Ekle</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Demirbaş</label>
+            <input type="text" class="form-control" id="issueInventoryItemNameDisplay" readonly>
+            <input type="hidden" name="inventory_item_name" id="issueInventoryItemNameInput" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Etiket *</label>
+            <select class="form-select" name="issue_tag" id="issueTagSelect" required>
+              <option value="">Etiket seçin</option>
+              <option value="eksik">Eksik</option>
+              <option value="arizali">Arızalı</option>
+              <option value="kirik">Kırık</option>
+              <option value="calismiyor">Çalışmıyor</option>
+              <option value="kayip">Kayıp</option>
+              <option value="diger">Diğer</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Açıklama</label>
+            <textarea class="form-control" name="description" id="issueDescriptionInput" rows="3" placeholder="Seçtiğiniz demirbaş için isterseniz detay yazın..."></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+          <button type="submit" class="btn btn-danger">Sorun Ekle</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<%- include('../footer') %>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const roomTabStorageKey = `room-detail-active-tab-<%= room.id %>`;
+
+    function getCurrentActiveTabHash() {
+      const activeTab = document.querySelector('.nav-tabs .nav-link.active');
+      if (!activeTab) return '#personeller';
+      const href = activeTab.getAttribute('href') || '#personeller';
+      return href.startsWith('#') ? href : '#personeller';
+    }
+
+    function activateTabByHash(hash) {
+      if (!hash || !hash.startsWith('#')) return false;
+      const trigger = document.querySelector(`.nav-tabs .nav-link[href="${hash}"]`);
+      if (!trigger) return false;
+      const tab = bootstrap.Tab.getOrCreateInstance(trigger);
+      tab.show();
+      return true;
+    }
+
+    const hashFromUrl = window.location.hash;
+    const storedTabHash = sessionStorage.getItem(roomTabStorageKey);
+    if (hashFromUrl) {
+      activateTabByHash(hashFromUrl);
+      sessionStorage.setItem(roomTabStorageKey, hashFromUrl);
+    } else if (storedTabHash) {
+      activateTabByHash(storedTabHash);
+    }
+
+    document.querySelectorAll('.nav-tabs .nav-link').forEach(tabEl => {
+      tabEl.addEventListener('shown.bs.tab', event => {
+        const href = event.target.getAttribute('href');
+        if (href && href.startsWith('#')) {
+          sessionStorage.setItem(roomTabStorageKey, href);
+        }
+      });
+    });
+
+    document.querySelectorAll('form').forEach(formEl => {
+      formEl.addEventListener('submit', () => {
+        sessionStorage.setItem(roomTabStorageKey, getCurrentActiveTabHash());
+      });
+    });
+
+    const showSelectPersonnelBtn = document.getElementById('showSelectPersonnelBtn');
+    const selectPersonnelSection = document.getElementById('selectPersonnelSection');
+    const hideSelectPersonnelBtn = document.getElementById('hideSelectPersonnelBtn');
+    const personnelSearchInput = document.getElementById('personnelSearchInput');
+    const personnelDepartmentFilter = document.getElementById('personnelDepartmentFilter');
+    const personnelListContainer = document.getElementById('personnelListContainer');
+    const personnelItems = Array.from(personnelListContainer.querySelectorAll('tbody tr'));
+    const currentRoomId = <%- JSON.stringify(Number(room.id)) %>;
+    const inventoryIssuesData = <%- JSON.stringify(inventoryIssues || []) %>;
+
+    const historySearchInput = document.getElementById('historySearchInput');
+    const historyTableBody = document.getElementById('historyTableBody');
+    if (historySearchInput && historyTableBody) {
+      const historyRows = Array.from(historyTableBody.querySelectorAll('tr'));
+
+      historySearchInput.addEventListener('input', () => {
+        const query = historySearchInput.value.trim().toLowerCase();
+        historyRows.forEach(row => {
+          const filterCell = row.querySelector('[data-history-filter]');
+          const text = filterCell ? (filterCell.getAttribute('data-history-filter') || '') : '';
+          row.style.display = !query || text.includes(query) ? '' : 'none';
+        });
+      });
+    }
+    const validIssueTags = ['eksik', 'arizali', 'kirik', 'calismiyor', 'kayip', 'diger'];
+    const openInventoryIssueMap = {};
+
+    (inventoryIssuesData || []).forEach(issue => {
+      if (!issue || issue.status === 'cozuldu') return;
+      const itemKey = (issue.inventory_item_name || '').trim().toLowerCase();
+      const tag = (issue.issue_tag || '').trim().toLowerCase();
+      if (!itemKey || !validIssueTags.includes(tag)) return;
+      if (openInventoryIssueMap[itemKey]) return;
+
+      openInventoryIssueMap[itemKey] = {
+        tag,
+        description: issue.description || ''
+      };
+    });
+
+    function applyOpenIssueDefaults(modalRoot, radioPrefix) {
+      if (!modalRoot) return;
+
+      modalRoot.querySelectorAll('.handover-item').forEach((itemEl, idx) => {
+        const itemKey = (itemEl.dataset.itemName || '').trim().toLowerCase();
+        const issue = openInventoryIssueMap[itemKey];
+
+        const yesRadio = itemEl.querySelector(`input[name="${radioPrefix}${idx}"][value="yes"]`);
+        const noRadio = itemEl.querySelector(`input[name="${radioPrefix}${idx}"][value="no"]`);
+        const problemDiv = itemEl.querySelector('.handover-problem');
+        const tagSelect = itemEl.querySelector('.handover-tag');
+        const descriptionInput = itemEl.querySelector('.handover-description');
+
+        if (!yesRadio || !noRadio || !problemDiv) return;
+
+        if (issue) {
+          noRadio.checked = true;
+          if (tagSelect) tagSelect.value = issue.tag;
+          if (descriptionInput) descriptionInput.value = issue.description;
+          problemDiv.style.display = 'block';
+        } else {
+          yesRadio.checked = true;
+          if (tagSelect) tagSelect.value = '';
+          if (descriptionInput) descriptionInput.value = '';
+          problemDiv.style.display = 'none';
+        }
+      });
+    }
+
+    async function resolveOpenIssueForItem(itemName) {
+      const response = await fetch(`/odalar/${currentRoomId}/demirbas-sorun-coz`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ item_name: itemName })
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || 'Sorun çözümlenirken hata oluştu.');
+      }
+      return payload;
+    }
+
+    async function handleHealthyOverrideChange(e, radioPrefix) {
+      if (!e.target.classList.contains('handover-delivered')) return;
+      if (!(e.target.value === 'yes' && e.target.checked)) return;
+
+      const itemEl = e.target.closest('.handover-item');
+      if (!itemEl) return;
+
+      const itemName = (itemEl.dataset.itemName || '').trim();
+      const itemKey = itemName.toLowerCase();
+      const currentIssue = openInventoryIssueMap[itemKey];
+      if (!currentIssue) return;
+
+      const confirmed = window.confirm('Bu demirbaş için açık sorun kaydı var. Sağlam teslim edildi olarak işaretlerseniz ilgili sorun çözüldü kabul edilecektir. Onaylıyor musunuz?');
+      const noRadio = itemEl.querySelector(`input[name^="${radioPrefix}"][value="no"]`);
+      const problemDiv = itemEl.querySelector('.handover-problem');
+
+      if (!confirmed) {
+        if (noRadio) noRadio.checked = true;
+        if (problemDiv) problemDiv.style.display = 'block';
+        return;
+      }
+
+      try {
+        await resolveOpenIssueForItem(itemName);
+        delete openInventoryIssueMap[itemKey];
+        if (problemDiv) problemDiv.style.display = 'none';
+        const tagSelect = itemEl.querySelector('.handover-tag');
+        const descriptionInput = itemEl.querySelector('.handover-description');
+        if (tagSelect) tagSelect.value = '';
+        if (descriptionInput) descriptionInput.value = '';
+      } catch (error) {
+        alert(error.message || 'Sorun kaydı çözümlenirken hata oluştu.');
+        if (noRadio) noRadio.checked = true;
+        if (problemDiv) problemDiv.style.display = 'block';
+      }
+    }
+
+    // "Listeden Seç" butonuna tıklayınca personelleri göster/gizle
+    showSelectPersonnelBtn.addEventListener('click', () => {
+        if (selectPersonnelSection.style.display === 'none') {
+            selectPersonnelSection.style.display = 'block';
+            showSelectPersonnelBtn.textContent = 'Listeyi Gizle';
+            showSelectPersonnelBtn.classList.remove('btn-outline-primary');
+            showSelectPersonnelBtn.classList.add('btn-outline-secondary');
+        } else {
+            selectPersonnelSection.style.display = 'none';
+            showSelectPersonnelBtn.textContent = 'Listeden Seç';
+            showSelectPersonnelBtn.classList.remove('btn-outline-secondary');
+            showSelectPersonnelBtn.classList.add('btn-outline-primary');
+        }
+    });
+    
+    hideSelectPersonnelBtn.addEventListener('click', () => {
+        selectPersonnelSection.style.display = 'none';
+        showSelectPersonnelBtn.textContent = 'Listeden Seç';
+        showSelectPersonnelBtn.classList.remove('btn-outline-secondary');
+        showSelectPersonnelBtn.classList.add('btn-outline-primary');
+    });
+
+
+    // Arama ve filtreleme fonksiyonu
+    function filterPersonnel() {
+        const searchTerm = personnelSearchInput.value.toLowerCase();
+        const selectedDepartment = personnelDepartmentFilter.value;
+
+        personnelItems.forEach(item => {
+            const name = item.dataset.name.toLowerCase();
+            const department = item.dataset.department;
+            
+            const matchesSearch = name.includes(searchTerm);
+            const matchesDepartment = selectedDepartment === '' || department === selectedDepartment;
+
+            if (matchesSearch && matchesDepartment) {
+                item.style.display = '';
+            } else {
+                item.style.display = 'none';
+            }
+        });
+    }
+
+    personnelSearchInput.addEventListener('input', filterPersonnel);
+    personnelDepartmentFilter.addEventListener('change', filterPersonnel);
+
+    const assignAndHandoverModal = document.getElementById('assignAndHandoverModal');
+    if (assignAndHandoverModal) {
+      const form = assignAndHandoverModal.querySelector('form');
+      const personnelIdInput = assignAndHandoverModal.querySelector('#assignPersonnelId');
+      const personnelNameSpan = assignAndHandoverModal.querySelector('#assignPersonnelName');
+      const payloadInput = assignAndHandoverModal.querySelector('#assignHandoverPayloadInput');
+
+      assignAndHandoverModal.addEventListener('show.bs.modal', event => {
+        const button = event.relatedTarget;
+        const personnelId = button.dataset.personnelId;
+        const personnelName = button.dataset.personnelName;
+
+        personnelIdInput.value = personnelId;
+        personnelNameSpan.textContent = personnelName;
+        form.reset(); // Formu her açılışta sıfırla
+
+        applyOpenIssueDefaults(assignAndHandoverModal, 'assign_delivery_');
+      });
+
+      form.addEventListener('submit', function(e) {
+        const handoverData = {
+          form_signed: form.querySelector('#assignFormSignedCheck').checked,
+          key_delivered: form.querySelector('#assignKeyDeliveredCheck').checked,
+          items: []
+        };
+
+        form.querySelectorAll('.handover-item').forEach((item, idx) => {
+          const itemName = item.dataset.itemName;
+          const delivered = item.querySelector(`input[name="assign_delivery_${idx}"]:checked`).value;
+          const problemDiv = item.querySelector('.handover-problem');
+          
+          if (delivered === 'no') {
+            handoverData.items.push({
+              name: itemName,
+              delivered: false,
+              tag: problemDiv.querySelector('.handover-tag').value,
+              description: problemDiv.querySelector('.handover-description').value
+            });
+          } else {
+            handoverData.items.push({
+              name: itemName,
+              delivered: true
+            });
+          }
+        });
+        payloadInput.value = JSON.stringify(handoverData);
+      });
+
+      assignAndHandoverModal.addEventListener('change', e => {
+        if (e.target.classList.contains('handover-delivered-no')) {
+          const problemDiv = e.target.closest('.handover-item').querySelector('.handover-problem');
+          problemDiv.style.display = 'block';
+        } else if (e.target.classList.contains('handover-delivered')) {
+          const problemDiv = e.target.closest('.handover-item').querySelector('.handover-problem');
+          problemDiv.style.display = 'none';
+        }
+
+        handleHealthyOverrideChange(e, 'assign_delivery_');
+      });
+    }
+
+    const addPersonnelAndAssignModal = document.getElementById('addPersonnelAndAssignModal');
+    if (addPersonnelAndAssignModal) {
+      const addForm = addPersonnelAndAssignModal.querySelector('form');
+      const addPayloadInput = addPersonnelAndAssignModal.querySelector('#handoverPayloadInput');
+      const roomAddPhotoBtn = addPersonnelAndAssignModal.querySelector('#roomAddPhotoBtn');
+      const roomPhotoOptions = addPersonnelAndAssignModal.querySelector('#roomPhotoOptions');
+      const roomChooseCameraBtn = addPersonnelAndAssignModal.querySelector('#roomChooseCameraBtn');
+      const roomChooseUploadBtn = addPersonnelAndAssignModal.querySelector('#roomChooseUploadBtn');
+      const roomCameraInputWrap = addPersonnelAndAssignModal.querySelector('#roomCameraInputWrap');
+      const roomUploadInputWrap = addPersonnelAndAssignModal.querySelector('#roomUploadInputWrap');
+      const roomUploadPhotoInput = addPersonnelAndAssignModal.querySelector('#roomUploadPhotoInput');
+      const roomCameraPreview = addPersonnelAndAssignModal.querySelector('#roomCameraPreview');
+      const roomCapturedPreview = addPersonnelAndAssignModal.querySelector('#roomCapturedPreview');
+      const roomTakePhotoBtn = addPersonnelAndAssignModal.querySelector('#roomTakePhotoBtn');
+      const roomStopCameraBtn = addPersonnelAndAssignModal.querySelector('#roomStopCameraBtn');
+      const roomCapturedPhotoFlag = addPersonnelAndAssignModal.querySelector('#roomCapturedPhotoFlag');
+
+      let roomCameraStream = null;
+      let roomCapturedBlob = null;
+
+      function setRoomTakeButtonLabel() {
+        if (!roomTakePhotoBtn) return;
+        roomTakePhotoBtn.innerHTML = roomCameraStream
+          ? '<i class="bi bi-camera"></i> Çek'
+          : '<i class="bi bi-camera"></i> Fotoğraf Çek';
+      }
+
+      function clearRoomCapturedPreview() {
+        roomCapturedBlob = null;
+        if (roomCapturedPhotoFlag) roomCapturedPhotoFlag.value = '0';
+        if (roomCapturedPreview) {
+          roomCapturedPreview.style.display = 'none';
+          roomCapturedPreview.src = '';
+        }
+        if (roomCameraPreview) roomCameraPreview.style.display = 'block';
+      }
+
+      function stopRoomCamera() {
+        if (roomCameraStream) {
+          roomCameraStream.getTracks().forEach(track => track.stop());
+          roomCameraStream = null;
+        }
+        if (roomCameraPreview) roomCameraPreview.srcObject = null;
+        if (roomStopCameraBtn) roomStopCameraBtn.disabled = false;
+        setRoomTakeButtonLabel();
+      }
+
+      async function startRoomCamera() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          alert('Bu tarayıcı kamera erişimini desteklemiyor.');
+          return;
+        }
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+          roomCameraStream = stream;
+          if (roomCameraPreview) {
+            roomCameraPreview.style.display = 'block';
+            roomCameraPreview.srcObject = stream;
+            await roomCameraPreview.play();
+          }
+          if (roomCapturedPreview) {
+            roomCapturedPreview.style.display = 'none';
+            roomCapturedPreview.src = '';
+          }
+          if (roomStopCameraBtn) roomStopCameraBtn.disabled = false;
+          setRoomTakeButtonLabel();
+        } catch (e) {
+          console.error('Kamera açılamadı:', e);
+          alert('Kamera açılamadı. Tarayıcı izinlerini kontrol edin.');
+        }
+      }
+
+      function showRoomCameraInput() {
+        if (roomUploadPhotoInput) roomUploadPhotoInput.value = '';
+        if (roomCameraInputWrap) roomCameraInputWrap.style.display = 'block';
+        if (roomUploadInputWrap) roomUploadInputWrap.style.display = 'none';
+        if (roomCapturedPreview) {
+          roomCapturedPreview.style.display = 'none';
+          roomCapturedPreview.src = '';
+        }
+        if (roomCameraPreview) roomCameraPreview.style.display = 'block';
+      }
+
+      function showRoomUploadInput() {
+        stopRoomCamera();
+        if (roomUploadInputWrap) roomUploadInputWrap.style.display = 'block';
+        if (roomCameraInputWrap) roomCameraInputWrap.style.display = 'none';
+      }
+
+      function takeRoomSnapshot() {
+        if (!roomCameraPreview) return;
+        const canvas = document.createElement('canvas');
+        const width = roomCameraPreview.videoWidth || 640;
+        const height = roomCameraPreview.videoHeight || 480;
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(roomCameraPreview, 0, 0, width, height);
+        canvas.toBlob((blob) => {
+          if (!blob) return;
+          roomCapturedBlob = blob;
+          if (roomCapturedPhotoFlag) roomCapturedPhotoFlag.value = '1';
+          if (roomCapturedPreview) {
+            roomCapturedPreview.src = URL.createObjectURL(blob);
+            roomCapturedPreview.style.display = 'block';
+            roomCapturedPreview.style.transform = 'scaleX(-1)';
+          }
+          if (roomCameraPreview) roomCameraPreview.style.display = 'none';
+          stopRoomCamera();
+        }, 'image/jpeg', 0.9);
+      }
+
+      if (roomAddPhotoBtn && roomPhotoOptions) {
+        roomAddPhotoBtn.addEventListener('click', () => {
+          roomPhotoOptions.style.display = roomPhotoOptions.style.display === 'none' ? 'block' : 'none';
+          if (roomPhotoOptions.style.display === 'none') {
+            if (roomCameraInputWrap) roomCameraInputWrap.style.display = 'none';
+            if (roomUploadInputWrap) roomUploadInputWrap.style.display = 'none';
+            if (roomUploadPhotoInput) roomUploadPhotoInput.value = '';
+            clearRoomCapturedPreview();
+            stopRoomCamera();
+          }
+        });
+      }
+
+      if (roomChooseUploadBtn) {
+        roomChooseUploadBtn.addEventListener('click', showRoomUploadInput);
+      }
+
+      if (roomChooseCameraBtn) {
+        roomChooseCameraBtn.addEventListener('click', async () => {
+          showRoomCameraInput();
+          await startRoomCamera();
+        });
+      }
+
+      if (roomStopCameraBtn) {
+        roomStopCameraBtn.disabled = false;
+        roomStopCameraBtn.addEventListener('click', async () => {
+          stopRoomCamera();
+          clearRoomCapturedPreview();
+          await startRoomCamera();
+        });
+      }
+
+      if (roomTakePhotoBtn) {
+        roomTakePhotoBtn.addEventListener('click', () => {
+          if (roomCapturedBlob || (roomCapturedPreview && roomCapturedPreview.style.display !== 'none')) {
+            clearRoomCapturedPreview();
+          }
+          if (!roomCameraStream) {
+            alert('Önce "Çek" butonuyla canlı önizlemeyi başlatın.');
+            return;
+          }
+          takeRoomSnapshot();
+        });
+      }
+
+      addPersonnelAndAssignModal.addEventListener('hidden.bs.modal', () => {
+        stopRoomCamera();
+        clearRoomCapturedPreview();
+        if (roomPhotoOptions) roomPhotoOptions.style.display = 'none';
+        if (roomCameraInputWrap) roomCameraInputWrap.style.display = 'none';
+        if (roomUploadInputWrap) roomUploadInputWrap.style.display = 'none';
+        if (roomUploadPhotoInput) roomUploadPhotoInput.value = '';
+        if (addPayloadInput) addPayloadInput.value = '';
+      });
+
+      addPersonnelAndAssignModal.addEventListener('show.bs.modal', () => {
+        addForm.reset();
+        applyOpenIssueDefaults(addPersonnelAndAssignModal, 'delivery_');
+      });
+
+      addForm.addEventListener('change', e => {
+        if (e.target.classList.contains('handover-delivered-no')) {
+          const problemDiv = e.target.closest('.handover-item').querySelector('.handover-problem');
+          problemDiv.style.display = 'block';
+        } else if (e.target.classList.contains('handover-delivered')) {
+          const problemDiv = e.target.closest('.handover-item').querySelector('.handover-problem');
+          problemDiv.style.display = 'none';
+        }
+
+        handleHealthyOverrideChange(e, 'delivery_');
+      });
+
+      addForm.addEventListener('submit', function(event) {
+        const handoverData = {
+          form_signed: !!addForm.querySelector('#formSignedCheck')?.checked,
+          key_delivered: !!addForm.querySelector('#keyDeliveredCheck')?.checked,
+          items: []
+        };
+
+        let invalid = false;
+        addForm.querySelectorAll('.handover-item').forEach((item, idx) => {
+          const itemName = item.dataset.itemName;
+          const deliveredInput = item.querySelector(`input[name="delivery_${idx}"]:checked`);
+          const delivered = deliveredInput ? deliveredInput.value === 'yes' : true;
+          const problemDiv = item.querySelector('.handover-problem');
+          const tag = (problemDiv.querySelector('.handover-tag')?.value || '').trim();
+          const description = (problemDiv.querySelector('.handover-description')?.value || '').trim();
+
+          if (!delivered && !tag) {
+            invalid = true;
+          }
+
+          handoverData.items.push({
+            name: itemName,
+            delivered,
+            tag,
+            description
+          });
+        });
+
+        if (invalid) {
+          event.preventDefault();
+          alert('Teslim edilmeyen her demirbaş için sorun türü seçilmelidir.');
+          return;
+        }
+
+        if (addPayloadInput) {
+          addPayloadInput.value = JSON.stringify(handoverData);
+        }
+
+        if (roomCapturedBlob && roomUploadPhotoInput) {
+          const dataTransfer = new DataTransfer();
+          dataTransfer.items.add(new File([roomCapturedBlob], `personel_${Date.now()}.jpg`, { type: 'image/jpeg' }));
+          roomUploadPhotoInput.files = dataTransfer.files;
+        }
+      });
+    }
+
+    const inventoryItemSelect = document.getElementById('inventoryItemSelect');
+    const manualInventoryNameWrap = document.getElementById('manualInventoryNameWrap');
+    const manualInventoryNameInput = document.getElementById('manualInventoryNameInput');
+
+    if (inventoryItemSelect && manualInventoryNameWrap && manualInventoryNameInput) {
+      const toggleManualInventoryInput = () => {
+        const isManual = inventoryItemSelect.value === '__manual__';
+        manualInventoryNameWrap.style.display = isManual ? 'block' : 'none';
+        manualInventoryNameInput.required = isManual;
+        if (!isManual) {
+          manualInventoryNameInput.value = '';
+        }
+      };
+
+      inventoryItemSelect.addEventListener('change', toggleManualInventoryInput);
+      toggleManualInventoryInput();
+    }
+
+    const editInventoryModal = document.getElementById('editInventoryModal');
+    if (editInventoryModal) {
+      editInventoryModal.addEventListener('show.bs.modal', (event) => {
+        const trigger = event.relatedTarget;
+        if (!trigger) return;
+
+        const itemId = trigger.getAttribute('data-item-id');
+        const itemName = trigger.getAttribute('data-item-name') || '';
+        const itemQuantity = trigger.getAttribute('data-item-quantity') || '1';
+        const rawItemCondition = trigger.getAttribute('data-item-condition') || 'saglam';
+        const legacyConditionMap = {
+          iyi: 'saglam',
+          orta: 'diger',
+          kotu: 'arizali'
+        };
+        const itemCondition = legacyConditionMap[rawItemCondition] || rawItemCondition;
+        const itemNotes = trigger.getAttribute('data-item-notes') || '';
+
+        const form = document.getElementById('editInventoryForm');
+        const nameInput = document.getElementById('editInventoryItemName');
+        const quantityInput = document.getElementById('editInventoryQuantity');
+        const conditionInput = document.getElementById('editInventoryCondition');
+        const notesInput = document.getElementById('editInventoryNotes');
+
+        if (form) form.action = `/odalar/<%= room.id %>/envanter/${itemId}/guncelle`;
+        if (nameInput) nameInput.value = itemName;
+        if (quantityInput) quantityInput.value = itemQuantity;
+        if (conditionInput) conditionInput.value = itemCondition;
+        if (notesInput) notesInput.value = itemNotes;
+      });
+    }
+
+    const addInventoryIssueModal = document.getElementById('addInventoryIssueModal');
+    if (addInventoryIssueModal) {
+      const issueItemNameDisplay = document.getElementById('issueInventoryItemNameDisplay');
+      const issueItemNameInput = document.getElementById('issueInventoryItemNameInput');
+      const issueTagSelect = document.getElementById('issueTagSelect');
+      const issueDescriptionInput = document.getElementById('issueDescriptionInput');
+      const issueForm = addInventoryIssueModal.querySelector('form');
+
+      addInventoryIssueModal.addEventListener('show.bs.modal', (event) => {
+        const trigger = event.relatedTarget;
+        const selectedItemName = trigger ? trigger.getAttribute('data-item-name') : null;
+
+        if (issueItemNameDisplay) issueItemNameDisplay.value = selectedItemName || '';
+        if (issueItemNameInput) issueItemNameInput.value = selectedItemName || '';
+        if (issueTagSelect) issueTagSelect.value = '';
+        if (issueDescriptionInput) issueDescriptionInput.value = '';
+      });
+
+      if (issueForm) {
+        issueForm.addEventListener('submit', (event) => {
+          if (!issueItemNameInput || !issueItemNameInput.value.trim()) {
+            event.preventDefault();
+            alert('Lütfen sorunu ilgili demirbaş satırındaki "Sorun Bildir" butonundan açın.');
+          }
+        });
+      }
+    }
+
+});
+</script>
+</body>
+</html>
