@@ -29,7 +29,7 @@ if "%ERRORLEVEL%"=="1" (
     echo [*] Please wait...
     timeout /t 3 /nobreak
     
-    for /L %%%%i in (1,1,60) do (
+    for /L %%i in (1,1,60) do (
         docker ps >NUL 2>&1
         if !ERRORLEVEL! equ 0 (
             echo [OK] Docker ready!
@@ -55,7 +55,7 @@ docker compose up -d
 
 echo [*] Waiting for application to start...
 set "max_wait=30"
-for /L %%%%i in (1,1,%max_wait%) do (
+for /L %%i in (1,1,%max_wait%) do (
     timeout /t 1 /nobreak
     curl -s http://localhost:3000 >NUL 2>&1
     if !ERRORLEVEL! equ 0 (
