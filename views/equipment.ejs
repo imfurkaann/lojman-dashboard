@@ -15,9 +15,9 @@
 <!-- Filtre -->
 <div class="card border-0 shadow-sm mb-4">
   <div class="card-body py-2">
-    <form method="GET" class="row g-2 align-items-center">
+    <form method="GET" class="row g-2 align-items-center" id="equipmentFilterForm">
       <div class="col-md-3">
-        <input type="text" class="form-control form-control-sm" name="search" placeholder="Eşya, kişi veya oda ara..." value="<%= search %>">
+        <input type="text" class="form-control form-control-sm" id="equipmentSearchInput" name="search" placeholder="Eşya, kişi veya oda ara..." value="<%= search %>">
       </div>
       <div class="col-md-3">
         <select class="form-select form-select-sm" name="status" onchange="this.form.submit()">
@@ -180,6 +180,20 @@ const personnelData = <%- JSON.stringify(personnel.map(p => ({ name: p.full_name
 const searchInput = document.getElementById('personnelSearch');
 const roomValue = document.getElementById('roomNumberValue');
 const suggestionsEl = document.getElementById('personnelSuggestions');
+const equipmentFilterForm = document.getElementById('equipmentFilterForm');
+const equipmentSearchInput = document.getElementById('equipmentSearchInput');
+
+if (equipmentFilterForm && equipmentSearchInput) {
+  let searchDebounceTimer = null;
+  equipmentSearchInput.addEventListener('input', () => {
+    if (searchDebounceTimer) {
+      clearTimeout(searchDebounceTimer);
+    }
+    searchDebounceTimer = setTimeout(() => {
+      equipmentFilterForm.submit();
+    }, 250);
+  });
+}
 
 function setRoomFromName(name) {
   const person = personnelData.find(p => (p.name || '').toLowerCase() === (name || '').toLowerCase());

@@ -5,7 +5,6 @@ const path = require('path');
 const fs = require('fs');
 const { db, logActivity, updateRoomStatus, syncRoomKeyStock, recordRoomEntry, recordRoomExit } = require('../database');
 
-const REQUIRED_INVENTORY_ITEMS = ['Yastık', 'Nevresim Takımı', 'Klima', 'Klima Kumandası', 'Televizyon', 'TV Kumandası', 'Elbise Dolabı'];
 const INVENTORY_ISSUE_TAGS = ['eksik', 'arizali', 'kirik', 'calismiyor', 'kayip', 'diger'];
 const MIN_ROOM_KEY_COUNT = 0;
 
@@ -14,6 +13,38 @@ function getRoomKeyLimit(roomId, fallbackLimit = 0) {
   if (!keyRow) return Math.max(MIN_ROOM_KEY_COUNT, Number(fallbackLimit || 0));
   const limit = Number(keyRow.max_quantity ?? keyRow.quantity ?? fallbackLimit ?? 0);
   return Math.max(MIN_ROOM_KEY_COUNT, limit);
+}
+
+function normalizeInventoryName(name) {
+  return String(name || '').trim().toLocaleLowerCase('tr-TR');
+}
+
+function getRoomInventoryItemNames(roomId) {
+  const numericRoomId = Number(roomId || 0);
+  if (!numericRoomId) return [];
+
+  const rows = db.prepare(`
+    SELECT item_name
+    FROM room_inventory
+    WHERE room_id = ?
+      AND item_name IS NOT NULL
+    ORDER BY id ASC
+  `).all(numericRoomId);
+
+  const seen = new Set();
+  const items = [];
+
+  rows.forEach(row => {
+    const itemName = String(row.item_name || '').trim();
+    const key = normalizeInventoryName(itemName);
+    if (!itemName) return;
+    if (key === normalizeInventoryName('Oda Anahtarı')) return;
+    if (seen.has(key)) return;
+    seen.add(key);
+    items.push(itemName);
+  });
+
+  return items;
 }
 
 // Fotoğraf yükleme ayarları
@@ -168,7 +199,7 @@ router.get('/', (req, res) => {
 
   if (search) {
     query += " AND (p.first_name LIKE ? OR p.last_name LIKE ? OR p.phone LIKE ?)";
-    params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    params.push(`${search}%`, `${search}%`, `${search}%`);
   }
   if (department) {
     query += ' AND p.department = ?';
@@ -187,10 +218,21 @@ router.get('/', (req, res) => {
 
   const inventoryRows = db.prepare("SELECT room_id, item_name, quantity, max_quantity FROM room_inventory WHERE room_id IN (SELECT id FROM rooms WHERE status NOT IN ('bakimda', 'depo'))").all();
   const roomInventoryMap = {};
+  const roomInventoryItemsMap = {};
   const roomKeyLimitMap = {};
   inventoryRows.forEach(row => {
     if (!roomInventoryMap[row.room_id]) roomInventoryMap[row.room_id] = {};
     roomInventoryMap[row.room_id][row.item_name] = row.quantity || 0;
+
+    const normalizedName = normalizeInventoryName(row.item_name);
+    if (!roomInventoryItemsMap[row.room_id]) roomInventoryItemsMap[row.room_id] = [];
+    if (normalizedName && normalizedName !== normalizeInventoryName('Oda Anahtarı')) {
+      const hasItem = roomInventoryItemsMap[row.room_id].some(existing => normalizeInventoryName(existing) === normalizedName);
+      if (!hasItem) {
+        roomInventoryItemsMap[row.room_id].push(String(row.item_name || '').trim());
+      }
+    }
+
     if ((row.item_name || '').toLowerCase() === 'oda anahtarı') {
       roomKeyLimitMap[row.room_id] = Number(row.max_quantity ?? row.quantity ?? 0);
     }
@@ -214,7 +256,7 @@ router.get('/', (req, res) => {
     const tag = String(issue.issue_tag || '').toLowerCase().trim();
     if (!roomId || !itemName || !validIssueTags.includes(tag)) return;
 
-    const itemKey = itemName.toLowerCase();
+    const itemKey = normalizeInventoryName(itemName);
     if (!roomOpenIssueMap[roomId]) roomOpenIssueMap[roomId] = {};
 
     if (roomOpenIssueMap[roomId][itemKey]) return;
@@ -232,9 +274,9 @@ router.get('/', (req, res) => {
     departments,
     availableRooms,
     roomInventoryMap,
+    roomInventoryItemsMap,
     roomKeyLimitMap,
     roomOpenIssueMap,
-    requiredInventoryItems: REQUIRED_INVENTORY_ITEMS,
     search,
     department,
     statusFilter: status,
@@ -618,10 +660,22 @@ router.get('/:id', (req, res) => {
 
   const inventoryRows = db.prepare("SELECT room_id, item_name, quantity FROM room_inventory WHERE room_id IN (SELECT id FROM rooms WHERE status NOT IN ('bakimda', 'depo'))").all();
   const roomInventoryMap = {};
+  const roomInventoryItemsMap = {};
   inventoryRows.forEach(row => {
     if (!roomInventoryMap[row.room_id]) roomInventoryMap[row.room_id] = {};
     roomInventoryMap[row.room_id][row.item_name] = row.quantity || 0;
+
+    const normalizedName = normalizeInventoryName(row.item_name);
+    if (!roomInventoryItemsMap[row.room_id]) roomInventoryItemsMap[row.room_id] = [];
+    if (normalizedName && normalizedName !== normalizeInventoryName('Oda Anahtarı')) {
+      const hasItem = roomInventoryItemsMap[row.room_id].some(existing => normalizeInventoryName(existing) === normalizedName);
+      if (!hasItem) {
+        roomInventoryItemsMap[row.room_id].push(String(row.item_name || '').trim());
+      }
+    }
   });
+
+  const checkoutInventoryItems = getRoomInventoryItemNames(person.room_id);
 
   const parseHandoverItems = (payload) => {
     try {
@@ -648,6 +702,36 @@ router.get('/:id', (req, res) => {
   const checkoutHandoverItems = dedupeHandoverItems(parseHandoverItems(person.checkout_handover_payload));
 
   const openCheckoutIssueMap = {};
+  const roomOpenIssueMap = {};
+  const validIssueTags = new Set(INVENTORY_ISSUE_TAGS);
+
+  const allOpenInventoryIssues = db.prepare(`
+    SELECT room_id, inventory_item_name, issue_tag, description
+    FROM room_issues
+    WHERE COALESCE(issue_type, 'oda') = 'demirbas'
+      AND status != 'cozuldu'
+      AND inventory_item_name IS NOT NULL
+      AND issue_tag IS NOT NULL
+    ORDER BY datetime(COALESCE(created_at, CURRENT_TIMESTAMP)) DESC, id DESC
+  `).all();
+
+  allOpenInventoryIssues.forEach(issue => {
+    const roomId = String(issue.room_id || '');
+    const itemName = String(issue.inventory_item_name || '').trim();
+    const tag = String(issue.issue_tag || '').toLowerCase().trim();
+    if (!roomId || !itemName || !validIssueTags.has(tag)) return;
+
+    const itemKey = normalizeInventoryName(itemName);
+    if (!roomOpenIssueMap[roomId]) roomOpenIssueMap[roomId] = {};
+    if (!roomOpenIssueMap[roomId][itemKey]) {
+      roomOpenIssueMap[roomId][itemKey] = {
+        itemName,
+        tag,
+        description: issue.description || ''
+      };
+    }
+  });
+
   if (person.room_id) {
     const openInventoryIssues = db.prepare(`
       SELECT inventory_item_name, issue_tag, description
@@ -662,7 +746,7 @@ router.get('/:id', (req, res) => {
 
     openInventoryIssues.forEach(issue => {
       const itemName = String(issue.inventory_item_name || '').trim();
-      const key = itemName.toLowerCase();
+      const key = normalizeInventoryName(itemName);
       const tag = normalizeIssueTag(issue.issue_tag);
       if (!itemName || !tag) return;
       if (openCheckoutIssueMap[key]) return;
@@ -694,10 +778,12 @@ router.get('/:id', (req, res) => {
     complaints,
     availableRooms,
     roomInventoryMap,
-    requiredInventoryItems: REQUIRED_INVENTORY_ITEMS,
+    roomInventoryItemsMap,
+    checkoutInventoryItems,
     entryHandoverItems,
     checkoutHandoverItems,
     openCheckoutIssueMap,
+    roomOpenIssueMap,
     personRoomHistory
   });
 });
@@ -817,12 +903,13 @@ router.post('/:id/oda-degistir', (req, res) => {
     }
 
     const payloadItems = parsedPayload && Array.isArray(parsedPayload.items) ? parsedPayload.items : [];
-    if (payloadItems.length !== REQUIRED_INVENTORY_ITEMS.length) {
+    const expectedItems = getRoomInventoryItemNames(parsedNewRoomId);
+    if (payloadItems.length !== expectedItems.length) {
       return res.status(400).send('Yeniden oda tahsisi için tüm demirbaş teslim bilgileri zorunludur.');
     }
 
-    const allValid = REQUIRED_INVENTORY_ITEMS.every(itemName => {
-      const item = payloadItems.find(i => i && i.name === itemName);
+    const allValid = expectedItems.every(itemName => {
+      const item = payloadItems.find(i => normalizeInventoryName(i && i.name) === normalizeInventoryName(itemName));
       if (!item) return false;
       if (item.delivered) return true;
       return !!item.tag;
@@ -853,6 +940,10 @@ router.post('/:id/oda-degistir', (req, res) => {
         newKeyDeliveredValue,
         req.params.id
       );
+
+      // Yeniden oda tahsisinde demirbaş sorun kayıtlarını ve envanter durumlarını senkronize et
+      const reassignItems = parsedPayload && Array.isArray(parsedPayload.items) ? parsedPayload.items : [];
+      syncHandoverIssuesForRoom(parsedNewRoomId, reassignItems, safeUserId, 'yeniden oda tahsisinde sağlam teslim edilmedi.');
     } else {
       const updatedKeyDelivered = parsedNewRoomId ? Number(person.key_delivered || 0) : 0;
       db.prepare('UPDATE personnel SET room_id = ?, status = ?, key_delivered = ? WHERE id = ?').run(parsedNewRoomId, nextStatus, updatedKeyDelivered, req.params.id);
@@ -937,12 +1028,13 @@ router.post('/:id/cikis', (req, res) => {
   }
 
   const checkoutItems = parsedCheckout && Array.isArray(parsedCheckout.items) ? parsedCheckout.items : [];
-  if (checkoutItems.length !== REQUIRED_INVENTORY_ITEMS.length) {
+  const expectedCheckoutItems = getRoomInventoryItemNames(person.room_id);
+  if (checkoutItems.length !== expectedCheckoutItems.length) {
     return res.status(400).send('Çıkış için tüm demirbaş teslim kontrolü zorunludur.');
   }
 
-  const allValid = REQUIRED_INVENTORY_ITEMS.every(itemName => {
-    const item = checkoutItems.find(i => i && i.name === itemName);
+  const allValid = expectedCheckoutItems.every(itemName => {
+    const item = checkoutItems.find(i => normalizeInventoryName(i && i.name) === normalizeInventoryName(itemName));
     if (!item) return false;
     if (item.delivered) return true;
     return !!normalizeIssueTag(item.tag);
@@ -1033,6 +1125,25 @@ router.post('/:id/cikis', (req, res) => {
 
   checkoutTx();
 
+  if (oldRoomId && Number(person.key_delivered || 0) === 1 && keyReturned === 0) {
+    db.prepare(`
+      UPDATE room_inventory
+      SET max_quantity = MAX(COALESCE(max_quantity, quantity, 0) - 1, 0)
+      WHERE room_id = ? AND LOWER(item_name) = LOWER('Oda Anahtarı')
+    `).run(oldRoomId);
+
+    const normalizedQty = syncRoomKeyStock(oldRoomId);
+    if (req.app.locals.io) {
+      req.app.locals.io.emit('personnel:room-update', {
+        personId: req.params.id,
+        roomId: oldRoomId,
+        anahtar_sayisi: normalizedQty
+      });
+    }
+
+    logActivity('anahtar_teslim_edilmedi', `Oda ${person.room_number || '-'} anahtari teslim edilmedi, toplam anahtar stogu 1 azaltildi.`, null, safeUserId);
+  }
+
   if (oldRoomId && keyReturned === 1) {
     const newKeyQty = incrementRoomKeyStock(oldRoomId);
     // Socket.IO event yay
@@ -1115,6 +1226,17 @@ router.post('/:id/sikayet-ekle', (req, res) => {
   );
   const person = db.prepare('SELECT first_name, last_name FROM personnel WHERE id = ?').get(req.params.id);
   logActivity('sikayet_eklendi', `${person.first_name} ${person.last_name} için şikayet kaydı: ${title}`, null, safeUserId);
+  
+  // Rapor sayfasını yenile
+  if (req.app.locals.io) {
+    req.app.locals.io.emit('report:refresh', {
+      source: 'personnel',
+      type: 'complaint_added',
+      personnelId: Number(req.params.id),
+      ts: Date.now()
+    });
+  }
+  
   res.redirect(`/personel/${req.params.id}`);
 });
 
@@ -1127,12 +1249,34 @@ router.post('/:id/sikayet/:complaintId/duzenle', (req, res) => {
     req.params.complaintId,
     req.params.id
   );
+  
+  // Rapor sayfasını yenile
+  if (req.app.locals.io) {
+    req.app.locals.io.emit('report:refresh', {
+      source: 'personnel',
+      type: 'complaint_updated',
+      personnelId: Number(req.params.id),
+      ts: Date.now()
+    });
+  }
+  
   res.redirect(`/personel/${req.params.id}`);
 });
 
 // Şikayet sil
 router.post('/:id/sikayet/:complaintId/sil', (req, res) => {
   db.prepare('DELETE FROM personnel_complaints WHERE id = ? AND personnel_id = ?').run(req.params.complaintId, req.params.id);
+  
+  // Rapor sayfasını yenile
+  if (req.app.locals.io) {
+    req.app.locals.io.emit('report:refresh', {
+      source: 'personnel',
+      type: 'complaint_deleted',
+      personnelId: Number(req.params.id),
+      ts: Date.now()
+    });
+  }
+  
   res.redirect(`/personel/${req.params.id}`);
 });
 

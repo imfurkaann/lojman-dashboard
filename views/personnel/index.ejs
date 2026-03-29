@@ -36,9 +36,9 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
 <!-- Filtre -->
 <div class="card border-0 shadow-sm mb-4">
   <div class="card-body py-2">
-    <form method="GET" class="row g-2 align-items-center">
+    <form method="GET" class="row g-2 align-items-center" id="personnelFilterForm">
       <div class="col-md-3">
-        <input type="text" class="form-control form-control-sm" name="search" placeholder="İsim veya telefon ara..." value="<%= search %>">
+        <input type="text" class="form-control form-control-sm" id="personnelSearchInput" name="search" placeholder="İsim veya telefon ara..." value="<%= search %>">
       </div>
       <div class="col-md-2">
         <select class="form-select form-select-sm" name="department" onchange="this.form.submit()">
@@ -237,39 +237,7 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
               </div>
             </div>
 
-            <% requiredInventoryItems.forEach((itemName, idx) => { %>
-              <div class="border rounded p-2 mb-2 handover-item" data-item-name="<%= itemName %>">
-                <div class="mb-2">
-                  <strong><%= itemName %></strong>
-                  <div class="form-check mt-1 mb-3">
-                    <input class="form-check-input handover-delivered" type="radio" name="delivery_<%= idx %>" id="delivered_yes_<%= idx %>" value="yes" checked>
-                    <label class="form-check-label" for="delivered_yes_<%= idx %>">✓ Sağlam Teslim Edildi</label>
-                  </div>
-                  <div class="form-check">
-                    <input class="form-check-input handover-delivered-no" type="radio" name="delivery_<%= idx %>" id="delivered_no_<%= idx %>" value="no">
-                    <label class="form-check-label" for="delivered_no_<%= idx %>">✗ Teslim Edilmedi</label>
-                  </div>
-                </div>
-                <div class="handover-problem" style="display:none; padding-top: 10px; border-top: 1px solid #dee2e6;">
-                  <div class="mb-2">
-                    <label class="form-label form-label-sm">Sorun Türü *</label>
-                    <select class="form-select form-select-sm handover-tag">
-                      <option value="">Seçin</option>
-                      <option value="eksik">Eksik</option>
-                      <option value="arizali">Arızalı</option>
-                      <option value="kirik">Kırık</option>
-                      <option value="calismiyor">Çalışmıyor</option>
-                      <option value="kayip">Kayıp</option>
-                      <option value="diger">Diğer</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label class="form-label form-label-sm">Neden Teslim Edilmedi? *</label>
-                    <textarea class="form-control form-control-sm handover-description" rows="3" placeholder="Sorunu detaylı açıklayın..."></textarea>
-                  </div>
-                </div>
-              </div>
-            <% }) %>
+            <div class="handover-items-container"></div>
 
             <div class="border rounded p-2 mt-3">
               <div class="d-flex justify-content-between align-items-center">
@@ -333,39 +301,7 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
               </div>
             </div>
 
-            <% requiredInventoryItems.forEach((itemName, idx) => { %>
-              <div class="border rounded p-2 mb-2 handover-item" data-item-name="<%= itemName %>">
-                <div class="mb-2">
-                  <strong><%= itemName %></strong>
-                  <div class="form-check mt-1 mb-3">
-                    <input class="form-check-input handover-delivered" type="radio" name="assign_delivery_<%= idx %>" id="assign_delivered_yes_<%= idx %>" value="yes" checked>
-                    <label class="form-check-label" for="assign_delivered_yes_<%= idx %>">✓ Sağlam Teslim Edildi</label>
-                  </div>
-                  <div class="form-check">
-                    <input class="form-check-input handover-delivered-no" type="radio" name="assign_delivery_<%= idx %>" id="assign_delivered_no_<%= idx %>" value="no">
-                    <label class="form-check-label" for="assign_delivered_no_<%= idx %>">✗ Teslim Edilmedi</label>
-                  </div>
-                </div>
-                <div class="handover-problem" style="display:none; padding-top: 10px; border-top: 1px solid #dee2e6;">
-                  <div class="mb-2">
-                    <label class="form-label form-label-sm">Sorun Türü *</label>
-                    <select class="form-select form-select-sm handover-tag">
-                      <option value="">Seçin</option>
-                      <option value="eksik">Eksik</option>
-                      <option value="arizali">Arızalı</option>
-                      <option value="kirik">Kırık</option>
-                      <option value="calismiyor">Çalışmıyor</option>
-                      <option value="kayip">Kayıp</option>
-                      <option value="diger">Diğer</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label class="form-label form-label-sm">Neden Teslim Edilmedi? *</label>
-                    <textarea class="form-control form-control-sm handover-description" rows="3" placeholder="Sorunu detaylı açıklayın..."></textarea>
-                  </div>
-                </div>
-              </div>
-            <% }) %>
+            <div class="handover-items-container"></div>
 
             <div class="border rounded p-2 mt-3">
               <div class="d-flex justify-content-between align-items-center">
@@ -396,6 +332,7 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
 
 <script>
 const roomInventoryMap = <%- JSON.stringify(roomInventoryMap || {}) %>;
+const roomInventoryItemsMap = <%- JSON.stringify(roomInventoryItemsMap || {}) %>;
 const roomKeyLimitMap = <%- JSON.stringify(roomKeyLimitMap || {}) %>;
 const roomOpenIssueMap = <%- JSON.stringify(roomOpenIssueMap || {}) %>;
 const roomSelectForHandover = document.getElementById('roomSelectForHandover');
@@ -421,6 +358,22 @@ const capturedPreview = document.getElementById('capturedPreview');
 const takePhotoBtn = document.getElementById('takePhotoBtn');
 const stopCameraBtn = document.getElementById('stopCameraBtn');
 const capturedPhotoFlag = document.getElementById('capturedPhotoFlag');
+const personnelFilterForm = document.getElementById('personnelFilterForm');
+const personnelSearchInput = document.getElementById('personnelSearchInput');
+
+if (personnelFilterForm && personnelSearchInput) {
+  let searchDebounceTimer = null;
+
+  personnelSearchInput.addEventListener('input', () => {
+    if (searchDebounceTimer) {
+      clearTimeout(searchDebounceTimer);
+    }
+
+    searchDebounceTimer = setTimeout(() => {
+      personnelFilterForm.submit();
+    }, 250);
+  });
+}
 
 let cameraStream = null;
 let capturedBlob = null;
@@ -591,21 +544,83 @@ function getRequiredKeyCountByRoomId(roomId) {
   return 3;
 }
 
+function normalizeItemKey(name) {
+  return String(name || '').trim().toLocaleLowerCase('tr-TR');
+}
+
+function getRoomInventoryItems(roomId) {
+  const list = roomInventoryItemsMap[String(roomId)] || roomInventoryItemsMap[roomId] || [];
+  return Array.isArray(list) ? list : [];
+}
+
+function renderHandoverItems(sectionEl, roomId, radioPrefix, idPrefix) {
+  if (!sectionEl) return;
+  const container = sectionEl.querySelector('.handover-items-container');
+  if (!container) return;
+
+  const roomItems = getRoomInventoryItems(roomId);
+  if (!roomItems.length) {
+    container.innerHTML = '<div class="text-muted small mb-2">Bu odada teslim kontrolü gerektiren demirbaş bulunmuyor.</div>';
+    return;
+  }
+
+  container.innerHTML = roomItems.map((itemName, idx) => {
+    const safeName = String(itemName || '').replace(/"/g, '&quot;');
+    const radioName = `${radioPrefix}${idx}`;
+    const yesId = `${idPrefix}_delivered_yes_${idx}`;
+    const noId = `${idPrefix}_delivered_no_${idx}`;
+
+    return `
+      <div class="border rounded p-2 mb-2 handover-item" data-item-name="${safeName}">
+        <div class="mb-2">
+          <strong>${safeName}</strong>
+          <div class="form-check mt-1 mb-3">
+            <input class="form-check-input handover-delivered" type="radio" name="${radioName}" id="${yesId}" value="yes" checked>
+            <label class="form-check-label" for="${yesId}">✓ Sağlam Teslim Edildi</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input handover-delivered-no" type="radio" name="${radioName}" id="${noId}" value="no">
+            <label class="form-check-label" for="${noId}">✗ Teslim Edilmedi</label>
+          </div>
+        </div>
+        <div class="handover-problem" style="display:none; padding-top: 10px; border-top: 1px solid #dee2e6;">
+          <div class="mb-2">
+            <label class="form-label form-label-sm">Sorun Türü *</label>
+            <select class="form-select form-select-sm handover-tag">
+              <option value="">Seçin</option>
+              <option value="eksik">Eksik</option>
+              <option value="arizali">Arızalı</option>
+              <option value="kirik">Kırık</option>
+              <option value="calismiyor">Çalışmıyor</option>
+              <option value="kayip">Kayıp</option>
+              <option value="diger">Diğer</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label form-label-sm">Neden Teslim Edilmedi? *</label>
+            <textarea class="form-control form-control-sm handover-description" rows="3" placeholder="Sorunu detaylı açıklayın..."></textarea>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
 function getOpenIssueForRoomItem(roomId, itemName) {
   const roomIssues = roomOpenIssueMap[String(roomId)] || {};
-  const key = String(itemName || '').trim().toLowerCase();
+  const key = normalizeItemKey(itemName);
   return roomIssues[key] || null;
 }
 
-function applyOpenIssueDefaults(sectionEl, roomId, radioPrefix) {
+function applyOpenIssueDefaults(sectionEl, roomId) {
   if (!sectionEl) return;
 
-  sectionEl.querySelectorAll('.handover-item').forEach((itemEl, idx) => {
+  sectionEl.querySelectorAll('.handover-item').forEach((itemEl) => {
     const itemName = itemEl.getAttribute('data-item-name') || '';
     const issue = getOpenIssueForRoomItem(roomId, itemName);
 
-    const yesRadio = itemEl.querySelector(`input[name="${radioPrefix}${idx}"][value="yes"]`);
-    const noRadio = itemEl.querySelector(`input[name="${radioPrefix}${idx}"][value="no"]`);
+    const yesRadio = itemEl.querySelector('input.handover-delivered[value="yes"]');
+    const noRadio = itemEl.querySelector('input.handover-delivered-no[value="no"]');
     const problemBox = itemEl.querySelector('.handover-problem');
     const tagSelect = itemEl.querySelector('.handover-tag');
     const descriptionInput = itemEl.querySelector('.handover-description');
@@ -643,7 +658,7 @@ async function resolveRoomIssueInBackground(roomId, itemName) {
   return payload;
 }
 
-async function handleHealthyOverrideInSection(e, sectionEl, roomId, radioPrefix) {
+async function handleHealthyOverrideInSection(e, sectionEl, roomId) {
   if (!e.target.classList.contains('handover-delivered')) return;
   if (!(e.target.value === 'yes' && e.target.checked)) return;
   if (!roomId || !sectionEl) return;
@@ -656,7 +671,7 @@ async function handleHealthyOverrideInSection(e, sectionEl, roomId, radioPrefix)
   if (!issue) return;
 
   const confirmed = window.confirm('Bu demirbaş için açık sorun kaydı var. Sağlam teslim edildi olarak işaretlerseniz ilgili sorun çözüldü kabul edilecektir. Onaylıyor musunuz?');
-  const noRadio = itemEl.querySelector(`input[name^="${radioPrefix}"][value="no"]`);
+  const noRadio = itemEl.querySelector('input.handover-delivered-no[value="no"]');
   const problemBox = itemEl.querySelector('.handover-problem');
 
   if (!confirmed) {
@@ -668,7 +683,7 @@ async function handleHealthyOverrideInSection(e, sectionEl, roomId, radioPrefix)
   try {
     await resolveRoomIssueInBackground(roomId, itemName);
     const roomIssues = roomOpenIssueMap[String(roomId)] || {};
-    delete roomIssues[itemName.toLowerCase()];
+    delete roomIssues[normalizeItemKey(itemName)];
     roomOpenIssueMap[String(roomId)] = roomIssues;
 
     if (problemBox) problemBox.style.display = 'none';
@@ -692,7 +707,9 @@ function updateHandoverSection() {
   }
   handoverSection.style.display = 'block';
 
-  applyOpenIssueDefaults(handoverSection, roomId, 'delivery_');
+  renderHandoverItems(handoverSection, roomId, 'delivery_', 'delivery');
+
+  applyOpenIssueDefaults(handoverSection, roomId);
 
   const requiredKeys = getRequiredKeyCountByRoomId(roomId);
   const inventory = roomInventoryMap[roomId] || {};
@@ -712,7 +729,8 @@ function updateAssignHandoverSection() {
   }
 
   assignHandoverSection.style.display = 'block';
-  applyOpenIssueDefaults(assignHandoverSection, roomId, 'assign_delivery_');
+  renderHandoverItems(assignHandoverSection, roomId, 'assign_delivery_', 'assign_delivery');
+  applyOpenIssueDefaults(assignHandoverSection, roomId);
 
   if (assignKeyCountInfo) {
     const requiredKeys = getRequiredKeyCountByRoomId(roomId);
@@ -757,33 +775,38 @@ if (assignRoomModalEl) {
 }
 
 // Radio button değişikliğinde sorun formu göster/gizle
-document.querySelectorAll('.handover-delivered-no').forEach(radio => {
-  radio.addEventListener('change', function() {
-    const container = this.closest('.handover-item');
-    const problemBox = container.querySelector('.handover-problem');
-    problemBox.style.display = this.checked ? 'block' : 'none';
+async function handleHandoverSectionChange(e, sectionEl, roomId) {
+  const t = e.target;
+  if (!t || !sectionEl || !roomId) return;
+
+  if (t.classList.contains('handover-delivered-no')) {
+    const container = t.closest('.handover-item');
+    const problemBox = container ? container.querySelector('.handover-problem') : null;
+    if (problemBox) problemBox.style.display = t.checked ? 'block' : 'none';
+    return;
+  }
+
+  if (t.classList.contains('handover-delivered') && t.value === 'yes' && t.checked) {
+    await handleHealthyOverrideInSection(e, sectionEl, roomId);
+    const container = t.closest('.handover-item');
+    const problemBox = container ? container.querySelector('.handover-problem') : null;
+    if (problemBox) problemBox.style.display = 'none';
+  }
+}
+
+if (handoverSection) {
+  handoverSection.addEventListener('change', async (e) => {
+    if (!roomSelectForHandover || !roomSelectForHandover.value) return;
+    await handleHandoverSectionChange(e, handoverSection, roomSelectForHandover.value);
   });
-});
+}
 
-document.querySelectorAll('.handover-delivered').forEach(radio => {
-  radio.addEventListener('change', async function(e) {
-    const inMainSection = this.closest('#handoverSection');
-    if (inMainSection && roomSelectForHandover && roomSelectForHandover.value) {
-      await handleHealthyOverrideInSection(e, handoverSection, roomSelectForHandover.value, 'delivery_');
-    }
-
-    const inAssignSection = this.closest('#assignHandoverSection');
-    if (inAssignSection && assignRoomSelect && assignRoomSelect.value) {
-      await handleHealthyOverrideInSection(e, assignHandoverSection, assignRoomSelect.value, 'assign_delivery_');
-    }
-
-    if (this.value === 'yes' && this.checked) {
-      const container = this.closest('.handover-item');
-      const problemBox = container.querySelector('.handover-problem');
-      problemBox.style.display = 'none';
-    }
+if (assignHandoverSection) {
+  assignHandoverSection.addEventListener('change', async (e) => {
+    if (!assignRoomSelect || !assignRoomSelect.value) return;
+    await handleHandoverSectionChange(e, assignHandoverSection, assignRoomSelect.value);
   });
-});
+}
 
 document.querySelector('#addPersonnelModal form').addEventListener('submit', function(e) {
   e.preventDefault();

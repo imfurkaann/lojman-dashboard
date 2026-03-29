@@ -385,6 +385,27 @@ function runMigrations() {
     END
   `);
 
+  // Yeni anahtar modeline gecis:
+  // max_quantity = odadaki toplam mevcut anahtar stogu
+  // quantity = eldeki/yedek anahtar
+  // Eski modelde cikista teslim edilmeyen anahtarlar quantity'den de dusuyordu.
+  // Bu nedenle mevcut verileri max_quantity = quantity + aktif personele teslimli anahtar sayisi
+  // formulu ile normalize ediyoruz (idempotent).
+  db.exec(`
+    UPDATE room_inventory AS ri
+    SET max_quantity = MAX(
+      0,
+      COALESCE(ri.quantity, 0) + (
+        SELECT COUNT(*)
+        FROM personnel p
+        WHERE p.room_id = ri.room_id
+          AND p.status = 'aktif'
+          AND COALESCE(p.key_delivered, 0) = 1
+      )
+    )
+    WHERE LOWER(ri.item_name) = LOWER('Oda Anahtarı')
+  `);
+
   // Personnel tablosuna TC kimlik, fotoğraf ve form_signed alanları ekle
   const personnelColumns = db.prepare('PRAGMA table_info(personnel)').all();
   const hasTcNumber = personnelColumns.some(col => col.name === 'tc_number');
@@ -636,9 +657,7 @@ function syncRoomKeyStock(roomId) {
 
   const maxQuantity = Math.max(0, Number(keyRow.max_quantity ?? keyRow.quantity ?? 0));
   const activeDeliveredCount = db.prepare("SELECT COUNT(*) as count FROM personnel WHERE room_id = ? AND status = 'aktif' AND key_delivered = 1").get(roomId).count || 0;
-  const outstandingUnreturnedCount = db.prepare("SELECT COUNT(*) as count FROM personnel WHERE checkout_room_id = ? AND status = 'cikis_yapti' AND key_delivered = 1 AND checkout_key_returned = 0").get(roomId).count || 0;
-  const totalKeysOut = activeDeliveredCount + outstandingUnreturnedCount;
-  const expectedQuantity = Math.max(0, Math.min(maxQuantity, maxQuantity - totalKeysOut));
+  const expectedQuantity = Math.max(0, Math.min(maxQuantity, maxQuantity - activeDeliveredCount));
 
   db.prepare('UPDATE room_inventory SET quantity = ?, max_quantity = ? WHERE id = ?').run(expectedQuantity, maxQuantity, keyRow.id);
   return expectedQuantity;

@@ -18,7 +18,7 @@ router.get('/', (req, res) => {
 
   if (search) {
     query += ' AND (se.item_name LIKE ? OR se.given_to LIKE ? OR se.room_number LIKE ?)';
-    params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    params.push(`${search}%`, `${search}%`, `${search}%`);
   }
   if (statusFilter) {
     query += ' AND se.status = ?';

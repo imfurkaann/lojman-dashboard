@@ -75,6 +75,15 @@ function getSafeUserId(req) {
   return user ? user.id : null;
 }
 
+function emitReportRefresh(req, roomId) {
+  if (!req || !req.app || !req.app.locals || !req.app.locals.io) return;
+  req.app.locals.io.emit('report:refresh', {
+    source: 'rooms',
+    roomId: roomId ? Number(roomId) : null,
+    ts: Date.now()
+  });
+}
+
 function isRoomAtCapacity(roomId, excludePersonnelId = null) {
   const room = db.prepare('SELECT id, capacity FROM rooms WHERE id = ?').get(roomId);
   if (!room) return { exists: false, atCapacity: false };
@@ -243,7 +252,7 @@ router.get('/', (req, res) => {
 
   if (search) {
     query += ' AND CAST(r.room_number AS TEXT) LIKE ?';
-    params.push(`%${search}%`);
+    params.push(`${search}%`);
   }
   if (statusFilter) {
     query += ' AND r.status = ?';
@@ -321,6 +330,29 @@ router.get('/:id', (req, res) => {
   const openRoomIssueCount = roomIssues.filter(issue => normalizeIssueStatus(issue.status) === 'acik').length;
   const openInventoryIssueCount = inventoryIssues.filter(issue => normalizeIssueStatus(issue.status) === 'acik').length;
   const inventory = db.prepare('SELECT * FROM room_inventory WHERE room_id = ? ORDER BY item_name').all(room.id);
+  const handoverInventoryItems = (() => {
+    const seen = new Set();
+    const dynamicItems = [];
+
+    inventory.forEach(item => {
+      const itemName = String(item.item_name || '').trim();
+      const key = itemName.toLocaleLowerCase('tr-TR');
+      if (!itemName) return;
+      if (key === 'oda anahtarı') return;
+      if (seen.has(key)) return;
+      seen.add(key);
+      dynamicItems.push(itemName);
+    });
+
+    if (dynamicItems.length > 0) {
+      return dynamicItems;
+    }
+
+    // Oda envanteri henüz girilmemişse eski davranışa geri düş
+    return DEFAULT_ROOM_INVENTORY
+      .map(item => item.name)
+      .filter(name => String(name || '').toLocaleLowerCase('tr-TR') !== 'oda anahtarı');
+  })();
   const storedEquipmentItems = db.prepare('SELECT name FROM equipment_items ORDER BY name').all().map(row => row.name).filter(Boolean);
   const roomInventoryItemNames = inventory.map(item => item.item_name).filter(Boolean);
   const equipmentItems = Array.from(new Set([...storedEquipmentItems, ...roomInventoryItemNames, ...DEFAULT_ROOM_INVENTORY.map(item => item.name)]))
@@ -370,7 +402,7 @@ router.get('/:id', (req, res) => {
     roomHistory,
     errorMessage,
     equipmentItems,
-    requiredInventoryItems: ['Yastık', 'Nevresim Takımı', 'Klima', 'Klima Kumandası', 'Televizyon', 'TV Kumandası', 'Elbise Dolabı']
+    handoverInventoryItems
   });
 });
 
@@ -501,16 +533,25 @@ router.post('/:id/sorun-ekle', (req, res) => {
   db.prepare("INSERT INTO room_issues (room_id, title, description, issue_type, reported_by) VALUES (?, ?, ?, 'oda', ?)").run(req.params.id, title, description || null, safeUserId);
   const room = db.prepare('SELECT room_number FROM rooms WHERE id = ?').get(req.params.id);
   logActivity('sorun_eklendi', `${room.room_number} odasına sorun eklendi: ${title}`, null, safeUserId);
+  emitReportRefresh(req, req.params.id);
   res.redirect(`/odalar/${req.params.id}`);
 });
 
 // Demirbaş sorunu ekle
 router.post('/:id/demirbas-sorun-ekle', (req, res) => {
-  const { inventory_item_name, title, description, issue_tag } = req.body;
+  const { inventory_item_name, inventory_item_id, title, description, issue_tag } = req.body;
   const rawUserId = req.session && req.session.user ? req.session.user.id : null;
   const actorUser = rawUserId ? db.prepare('SELECT id FROM users WHERE id = ?').get(rawUserId) : null;
   const safeUserId = actorUser ? actorUser.id : null;
-  if (!inventory_item_name || !inventory_item_name.trim()) {
+
+  let resolvedItemName = (inventory_item_name || '').trim();
+  const parsedItemId = Number.parseInt(inventory_item_id, 10);
+  if ((!resolvedItemName || !resolvedItemName.trim()) && Number.isInteger(parsedItemId)) {
+    const inventoryRow = db.prepare('SELECT item_name FROM room_inventory WHERE id = ? AND room_id = ?').get(parsedItemId, req.params.id);
+    resolvedItemName = inventoryRow && inventoryRow.item_name ? String(inventoryRow.item_name).trim() : '';
+  }
+
+  if (!resolvedItemName || !resolvedItemName.trim()) {
     return res.redirect(`/odalar/${req.params.id}?error=${encodeURIComponent('Demirbaş seçimi zorunludur.')}`);
   }
 
@@ -520,15 +561,16 @@ router.post('/:id/demirbas-sorun-ekle', (req, res) => {
   }
 
   const normalizedTag = issue_tag.toLowerCase();
-  const sorunBasligi = `${inventory_item_name.trim()} - ${normalizedTag}`;
+  const sorunBasligi = `${resolvedItemName} - ${normalizedTag}`;
   db.prepare("INSERT INTO room_issues (room_id, title, description, issue_type, inventory_item_name, issue_tag, reported_by) VALUES (?, ?, ?, 'demirbas', ?, ?, ?)")
-    .run(req.params.id, sorunBasligi, description || null, inventory_item_name.trim(), normalizedTag, safeUserId);
+    .run(req.params.id, sorunBasligi, description || null, resolvedItemName, normalizedTag, safeUserId);
 
   const mappedCondition = mapIssueTagToCondition(normalizedTag);
-  db.prepare('UPDATE room_inventory SET condition = ? WHERE room_id = ? AND LOWER(item_name) = LOWER(?)').run(mappedCondition, req.params.id, inventory_item_name.trim());
+  db.prepare('UPDATE room_inventory SET condition = ? WHERE room_id = ? AND LOWER(item_name) = LOWER(?)').run(mappedCondition, req.params.id, resolvedItemName);
 
   const room = db.prepare('SELECT room_number FROM rooms WHERE id = ?').get(req.params.id);
-  logActivity('demirbas_sorunu_eklendi', `${room.room_number} odasında demirbaş sorunu eklendi: ${inventory_item_name.trim()} (${normalizedTag})`, description || null, safeUserId);
+  logActivity('demirbas_sorunu_eklendi', `${room.room_number} odasında demirbaş sorunu eklendi: ${resolvedItemName} (${normalizedTag})`, description || null, safeUserId);
+  emitReportRefresh(req, req.params.id);
   res.redirect(`/odalar/${req.params.id}#sorunlar`);
 });
 
@@ -583,6 +625,8 @@ router.post('/:id/demirbas-sorun-coz', (req, res) => {
     safeUserId
   );
 
+  emitReportRefresh(req, roomId);
+
   return res.json({ ok: true, resolvedCount, itemName, roomId });
 });
 
@@ -605,6 +649,7 @@ router.post('/:id/sorun/:issueId/guncelle', (req, res) => {
 
   const room = db.prepare('SELECT room_number FROM rooms WHERE id = ?').get(req.params.id);
   logActivity('sorun_guncellendi', `${room.room_number} odasında sorun durumu güncellendi`, `Yeni durum: ${normalizedStatus}`, req.session.user.id);
+  emitReportRefresh(req, req.params.id);
   res.redirect(`/odalar/${req.params.id}`);
 });
 
@@ -621,28 +666,31 @@ router.post('/:id/sorun/:issueId/sil', (req, res) => {
 
   const room = db.prepare('SELECT room_number FROM rooms WHERE id = ?').get(req.params.id);
   logActivity('sorun_silindi', `${room.room_number} odasında sorun silindi`, issue.title || null, req.session.user.id);
+  emitReportRefresh(req, req.params.id);
   res.redirect(`/odalar/${req.params.id}`);
 });
 
 // Demirbaş ekle
 router.post('/:id/envanter-ekle', (req, res) => {
-  const { item_name_select, item_name_manual, quantity, condition, notes } = req.body;
+  const { item_name, item_name_select, item_name_manual, quantity, condition, notes } = req.body;
   const safeUserId = getSafeUserId(req);
+  const directName = (item_name || '').trim();
   const selectedName = (item_name_select || '').trim();
   const manualName = (item_name_manual || '').trim();
-  const item_name = selectedName === '__manual__' ? manualName : selectedName;
-  if (!item_name) {
+  const resolvedItemName = directName || (selectedName === '__manual__' ? manualName : selectedName);
+  if (!resolvedItemName) {
     return res.redirect(`/odalar/${req.params.id}?error=${encodeURIComponent('Demirbaş adı zorunludur.')}`);
   }
 
   const parsedQty = Number.parseInt(quantity, 10) || 1;
-  const safeQty = clampQuantityForItem(req.params.id, item_name, parsedQty, parsedQty);
-  const maxQuantity = (item_name || '').toLowerCase() === 'oda anahtarı' ? safeQty : null;
+  const safeQty = clampQuantityForItem(req.params.id, resolvedItemName, parsedQty, parsedQty);
+  const maxQuantity = (resolvedItemName || '').toLowerCase() === 'oda anahtarı' ? safeQty : null;
 
-  db.prepare('INSERT OR IGNORE INTO equipment_items (name) VALUES (?)').run(item_name);
-  db.prepare('INSERT INTO room_inventory (room_id, item_name, quantity, max_quantity, condition, notes, added_by) VALUES (?, ?, ?, ?, ?, ?, ?)').run(req.params.id, item_name, safeQty, maxQuantity, condition || 'saglam', notes || null, safeUserId);
+  db.prepare('INSERT OR IGNORE INTO equipment_items (name) VALUES (?)').run(resolvedItemName);
+  db.prepare('INSERT INTO room_inventory (room_id, item_name, quantity, max_quantity, condition, notes, added_by) VALUES (?, ?, ?, ?, ?, ?, ?)').run(req.params.id, resolvedItemName, safeQty, maxQuantity, condition || 'saglam', notes || null, safeUserId);
   const room = db.prepare('SELECT room_number FROM rooms WHERE id = ?').get(req.params.id);
-  logActivity('envanter_eklendi', `${room.room_number} odasına eşya eklendi: ${item_name}`, null, safeUserId);
+  logActivity('envanter_eklendi', `${room.room_number} odasına eşya eklendi: ${resolvedItemName}`, null, safeUserId);
+  emitReportRefresh(req, req.params.id);
   res.redirect(`/odalar/${req.params.id}`);
 });
 
@@ -660,6 +708,7 @@ router.post('/:id/envanter/:itemId/guncelle', (req, res) => {
   } else {
     db.prepare('UPDATE room_inventory SET quantity = ?, condition = ?, notes = ? WHERE id = ?').run(safeQty, condition, notes || null, req.params.itemId);
   }
+  emitReportRefresh(req, req.params.id);
   res.redirect(`/odalar/${req.params.id}`);
 });
 
@@ -671,6 +720,7 @@ router.post('/:id/envanter/:itemId/sil', (req, res) => {
   if (item) {
     logActivity('envanter_silindi', `${room.room_number} odasından eşya silindi: ${item.item_name}`, null, req.session.user.id);
   }
+  emitReportRefresh(req, req.params.id);
   res.redirect(`/odalar/${req.params.id}`);
 });
 
@@ -702,6 +752,7 @@ router.post('/:id/envanter/:itemId/eksik', (req, res) => {
   );
 
   logActivity('envanter_eksik_bildirildi', `${room.room_number} odasında demirbaş eksik bildirildi: ${item.item_name}`, issueDescription, safeUserId);
+  emitReportRefresh(req, req.params.id);
   res.redirect(`/odalar/${req.params.id}#sorunlar`);
 });
 

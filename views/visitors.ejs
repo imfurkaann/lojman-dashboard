@@ -10,9 +10,9 @@
 <!-- Filtre -->
 <div class="card border-0 shadow-sm mb-4">
   <div class="card-body py-2">
-    <form method="GET" class="row g-2 align-items-center">
+    <form method="GET" class="row g-2 align-items-center" id="visitorsFilterForm">
       <div class="col-md-3">
-        <input type="text" class="form-control form-control-sm" name="search" placeholder="İsim, amaç veya firma..." value="<%= search %>">
+        <input type="text" class="form-control form-control-sm" id="visitorsSearchInput" name="search" placeholder="İsim, amaç veya firma..." value="<%= search %>">
       </div>
       <div class="col-md-2">
         <input type="date" class="form-control form-control-sm" name="date" value="<%= dateFilter %>" onchange="this.form.submit()">
@@ -165,3 +165,19 @@
 </div>
 
 <%- include('footer') %>
+
+<script>
+const visitorsFilterForm = document.getElementById('visitorsFilterForm');
+const visitorsSearchInput = document.getElementById('visitorsSearchInput');
+if (visitorsFilterForm && visitorsSearchInput) {
+  let searchDebounceTimer = null;
+  visitorsSearchInput.addEventListener('input', () => {
+    if (searchDebounceTimer) {
+      clearTimeout(searchDebounceTimer);
+    }
+    searchDebounceTimer = setTimeout(() => {
+      visitorsFilterForm.submit();
+    }, 250);
+  });
+}
+</script>

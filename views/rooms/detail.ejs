@@ -399,6 +399,7 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
                 title="Sorun Bildir"
                 data-bs-toggle="modal"
                 data-bs-target="#addInventoryIssueModal"
+                data-item-id="<%= inv.id %>"
                 data-item-name="<%= inv.item_name %>">
                 <i class="bi bi-exclamation-triangle"></i>
               </button>
@@ -624,7 +625,7 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
                 </div>
               </div>
             </div>
-            <% requiredInventoryItems.forEach((itemName, idx) => { %>
+            <% (handoverInventoryItems || []).forEach((itemName, idx) => { %>
               <div class="border rounded p-2 mb-2 handover-item" data-item-name="<%= itemName %>">
                 <div class="mb-2">
                   <strong><%= itemName %></strong>
@@ -750,7 +751,7 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
               </div>
             </div>
 
-            <% requiredInventoryItems.forEach((itemName, idx) => { %>
+            <% (handoverInventoryItems || []).forEach((itemName, idx) => { %>
               <div class="border rounded p-2 mb-2 handover-item" data-item-name="<%= itemName %>">
                 <div class="mb-2">
                   <strong><%= itemName %></strong>
@@ -894,18 +895,8 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
         </div>
         <div class="modal-body">
           <div class="mb-3">
-            <label class="form-label">Demirbaş Seç *</label>
-            <select class="form-select" name="item_name_select" id="inventoryItemSelect" required>
-              <option value="">Listeden seçin</option>
-              <% (equipmentItems || []).forEach(item => { %>
-                <option value="<%= item %>"><%= item %></option>
-              <% }) %>
-              <option value="__manual__">Listede yok (elle gir)</option>
-            </select>
-          </div>
-          <div class="mb-3" id="manualInventoryNameWrap" style="display:none;">
-            <label class="form-label">Elle Demirbaş Adı *</label>
-            <input type="text" class="form-control" name="item_name_manual" id="manualInventoryNameInput" placeholder="Örn: Saç Kurutma Makinesi">
+            <label class="form-label">Demirbaş Adı *</label>
+            <input type="text" class="form-control" name="item_name" id="inventoryItemInput" placeholder="Örn: Klozet" required>
           </div>
           <div class="mb-3">
             <label class="form-label">Adet</label>
@@ -994,6 +985,7 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
           <div class="mb-3">
             <label class="form-label">Demirbaş</label>
             <input type="text" class="form-control" id="issueInventoryItemNameDisplay" readonly>
+            <input type="hidden" name="inventory_item_id" id="issueInventoryItemIdInput">
             <input type="hidden" name="inventory_item_name" id="issueInventoryItemNameInput" required>
           </div>
           <div class="mb-3">
@@ -1529,24 +1521,6 @@ document.addEventListener('DOMContentLoaded', function () {
       });
     }
 
-    const inventoryItemSelect = document.getElementById('inventoryItemSelect');
-    const manualInventoryNameWrap = document.getElementById('manualInventoryNameWrap');
-    const manualInventoryNameInput = document.getElementById('manualInventoryNameInput');
-
-    if (inventoryItemSelect && manualInventoryNameWrap && manualInventoryNameInput) {
-      const toggleManualInventoryInput = () => {
-        const isManual = inventoryItemSelect.value === '__manual__';
-        manualInventoryNameWrap.style.display = isManual ? 'block' : 'none';
-        manualInventoryNameInput.required = isManual;
-        if (!isManual) {
-          manualInventoryNameInput.value = '';
-        }
-      };
-
-      inventoryItemSelect.addEventListener('change', toggleManualInventoryInput);
-      toggleManualInventoryInput();
-    }
-
     const editInventoryModal = document.getElementById('editInventoryModal');
     if (editInventoryModal) {
       editInventoryModal.addEventListener('show.bs.modal', (event) => {
@@ -1581,24 +1555,46 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const addInventoryIssueModal = document.getElementById('addInventoryIssueModal');
     if (addInventoryIssueModal) {
+      let lastIssueItemName = '';
+      let lastIssueItemId = '';
       const issueItemNameDisplay = document.getElementById('issueInventoryItemNameDisplay');
+      const issueItemIdInput = document.getElementById('issueInventoryItemIdInput');
       const issueItemNameInput = document.getElementById('issueInventoryItemNameInput');
       const issueTagSelect = document.getElementById('issueTagSelect');
       const issueDescriptionInput = document.getElementById('issueDescriptionInput');
       const issueForm = addInventoryIssueModal.querySelector('form');
 
+      const issueButtons = document.querySelectorAll('.report-item-issue-btn');
+      issueButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          lastIssueItemId = btn.getAttribute('data-item-id') || '';
+          lastIssueItemName = btn.getAttribute('data-item-name') || '';
+        });
+      });
+
       addInventoryIssueModal.addEventListener('show.bs.modal', (event) => {
         const trigger = event.relatedTarget;
         const selectedItemName = trigger ? trigger.getAttribute('data-item-name') : null;
+        const selectedItemId = trigger ? trigger.getAttribute('data-item-id') : null;
 
-        if (issueItemNameDisplay) issueItemNameDisplay.value = selectedItemName || '';
-        if (issueItemNameInput) issueItemNameInput.value = selectedItemName || '';
+        const finalItemName = (selectedItemName || lastIssueItemName || '').trim();
+        const finalItemId = (selectedItemId || lastIssueItemId || '').trim();
+
+        if (issueItemNameDisplay) issueItemNameDisplay.value = finalItemName;
+        if (issueItemNameInput) issueItemNameInput.value = finalItemName;
+        if (issueItemIdInput) issueItemIdInput.value = finalItemId;
         if (issueTagSelect) issueTagSelect.value = '';
         if (issueDescriptionInput) issueDescriptionInput.value = '';
       });
 
       if (issueForm) {
         issueForm.addEventListener('submit', (event) => {
+          if (issueItemNameInput && !issueItemNameInput.value.trim() && lastIssueItemName) {
+            issueItemNameInput.value = lastIssueItemName;
+          }
+          if (issueItemIdInput && !issueItemIdInput.value.trim() && lastIssueItemId) {
+            issueItemIdInput.value = lastIssueItemId;
+          }
           if (!issueItemNameInput || !issueItemNameInput.value.trim()) {
             event.preventDefault();
             alert('Lütfen sorunu ilgili demirbaş satırındaki "Sorun Bildir" butonundan açın.');

@@ -18,7 +18,7 @@ router.get('/', (req, res) => {
 
   if (search) {
     query += ' AND (v.visitor_name LIKE ? OR v.purpose LIKE ? OR v.company LIKE ?)';
-    params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    params.push(`${search}%`, `${search}%`, `${search}%`);
   }
   if (dateFilter) {
     query += ' AND date(v.visit_date) = ?';

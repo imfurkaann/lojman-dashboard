@@ -1,0 +1,278 @@
+<%- include('layout', { title: 'Rapor Oluştur' }) %>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h4 class="mb-0"><i class="bi bi-file-earmark-text"></i> Rapor Oluştur</h4>
+</div>
+
+<% if (mode === 'key-shortage') { %>
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <div>
+      <h5 class="mb-1"><i class="bi bi-key"></i> Anahtar Eksik Raporu</h5>
+      <small class="text-muted">Kural: Oda anahtarı sayısı = Oda kapasitesi + 1 (1 adet yedek anahtar)</small>
+    </div>
+    <div class="d-flex gap-2">
+      <a href="/rapor-olustur" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left"></i> Rapor Listesi
+      </a>
+      <a href="/rapor-olustur/anahtar-eksikleri/excel" class="btn btn-success btn-sm">
+        <i class="bi bi-file-earmark-excel"></i> Excel İndir
+      </a>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-body p-0">
+    <% if (!shortages || shortages.length === 0) { %>
+      <div class="text-center text-muted py-5">
+        <i class="bi bi-check-circle fs-1"></i>
+        <p class="mt-2 mb-0">Anahtar eksiği olan oda bulunmuyor.</p>
+      </div>
+    <% } else { %>
+      <div class="table-responsive">
+        <table class="table table-hover mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Oda No</th>
+              <th>Kapasite</th>
+              <th>Dolu Kişi</th>
+              <th>Olması Gereken Anahtar</th>
+              <th>Toplam Anahtar (Stok)</th>
+              <th>Eldeki Yedek Anahtar</th>
+              <th>Eksik Anahtar</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% shortages.forEach(row => { %>
+              <tr>
+                <td>
+                  <a href="/odalar/<%= row.room_id %>" class="fw-bold text-decoration-none">
+                    <%= row.room_number %>
+                  </a>
+                </td>
+                <td><%= row.capacity %></td>
+                <td><%= row.occupied_count %></td>
+                <td><%= row.expected_key_count %></td>
+                <td><%= row.total_key_count %></td>
+                <td><%= row.spare_key_count %></td>
+                <td><span class="badge bg-danger"><%= row.missing_key_count %> adet</span></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+  </div>
+</div>
+<% } else { %>
+<% if (mode === 'room-issues') { %>
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <div>
+      <h5 class="mb-1"><i class="bi bi-exclamation-triangle"></i> Oda Sorunları Raporu</h5>
+      <small class="text-muted">Anlık açık sorunlar listelenir. Bu ekran, ilgili birimlere sorunları hızlı aktarmak için tasarlanmıştır.</small>
+    </div>
+    <div class="d-flex gap-2">
+      <a href="/rapor-olustur" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left"></i> Rapor Listesi
+      </a>
+      <a href="/rapor-olustur/oda-sorunlari/excel" class="btn btn-success btn-sm">
+        <i class="bi bi-file-earmark-excel"></i> Excel İndir
+      </a>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-body p-0">
+    <% if (!roomIssueRows || roomIssueRows.length === 0) { %>
+      <div class="text-center text-muted py-5">
+        <i class="bi bi-check-circle fs-1"></i>
+        <p class="mt-2 mb-0">Açık oda sorunu bulunmuyor.</p>
+      </div>
+    <% } else { %>
+      <div class="table-responsive room-issues-table-wrap">
+        <table class="table table-hover mb-0 align-middle room-issues-table">
+          <thead class="table-light">
+            <tr>
+              <th>Oda</th>
+              <% inventoryColumns.forEach(col => { %>
+                <th><%= col %></th>
+              <% }) %>
+              <th>Genel Oda Sorunları (Açıklama)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% roomIssueRows.forEach(row => { %>
+              <tr>
+                <td>
+                  <a href="/odalar/<%= row.room_id %>" class="fw-bold text-decoration-none">
+                    <%= row.room_number %>
+                  </a>
+                </td>
+                <% inventoryColumns.forEach(col => { %>
+                  <td>
+                    <% const itemStatus = row.inventory_status[col]; %>
+                    <% if (itemStatus && itemStatus !== '-') { %>
+                      <% if (itemStatus === 'Sağlam') { %>
+                        <span class="badge bg-success"><%= itemStatus %></span>
+                      <% } else if (itemStatus === 'Eksik' || itemStatus === 'Kayıp') { %>
+                        <span class="badge bg-danger"><%= itemStatus %></span>
+                      <% } else { %>
+                        <span class="badge bg-warning text-dark"><%= itemStatus %></span>
+                      <% } %>
+                    <% } else { %>
+                      <span class="text-muted">-</span>
+                    <% } %>
+                  </td>
+                <% }) %>
+                <td>
+                  <% if (!row.general_notes || row.general_notes.length === 0) { %>
+                    <span class="text-muted">-</span>
+                  <% } else { %>
+                    <% row.general_notes.forEach(note => { %>
+                      <div><%= note %></div>
+                    <% }) %>
+                  <% } %>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+  </div>
+</div>
+<% } else if (mode === 'personel-sikayetleri') { %>
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <div>
+      <h5 class="mb-1"><i class="bi bi-chat-dots"></i> Personel Şikayetleri Raporu</h5>
+      <small class="text-muted">Personeler tarafından bildirilen şikayetlerin detaylı koordinatı.</small>
+    </div>
+    <div class="d-flex gap-2">
+      <a href="/rapor-olustur" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left"></i> Rapor Listesi
+      </a>
+      <a href="/rapor-olustur/personel-sikayetleri/excel" class="btn btn-success btn-sm">
+        <i class="bi bi-file-earmark-excel"></i> Excel İndir
+      </a>
+    </div>
+  </div>
+</div>
+
+<!-- Personnel Complaints Table -->
+<div class="card border-0 shadow-sm">
+  <div class="card-body p-0">
+    <% if (!personnelReport.data || personnelReport.data.length === 0) { %>
+      <div class="text-center text-muted py-5">
+        <i class="bi bi-check-circle fs-1"></i>
+        <p class="mt-2 mb-0">Şikayeti olan personel bulunmuyor.</p>
+      </div>
+    <% } else { %>
+      <div class="table-responsive">
+        <table class="table table-hover mb-0 align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>Personel Adı</th>
+              <th>Departman</th>
+              <th>Oda</th>
+              <th>Şikayetler</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% personnelReport.data.forEach(p => { %>
+              <tr>
+                <td>
+                  <a href="/personel/<%= p.id %>" class="fw-bold text-decoration-none">
+                    <%= p.first_name %> <%= p.last_name %>
+                  </a>
+                </td>
+                <td><%= p.department || '-' %></td>
+                <td>
+                  <% if (p.room_id && p.room_number) { %>
+                    <a href="/odalar/<%= p.room_id %>" class="fw-bold text-decoration-none">
+                      <%= p.room_number %>
+                    </a>
+                  <% } else { %>
+                    <strong>-</strong>
+                  <% } %>
+                </td>
+                <td>
+                  <div class="list-group list-group-flush bg-transparent">
+                    <% p.complaints.forEach((c, idx) => { %>
+                      <div class="list-group-item border-0 ps-0 pb-2">
+                        <div class="mb-1">
+                          <strong><%= c.title %></strong>
+                        </div>
+                        <% if (c.description) { %>
+                          <small><%= c.description %></small>
+                        <% } %>
+                        <div class="mt-1">
+                          <small class="text-muted">
+                            <i class="bi bi-clock me-1"></i>
+                            <%= new Date(c.created_at).toLocaleDateString('tr-TR', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) %>
+                            <% if (c.recorder) { %>
+                              - <%= c.recorder %>
+                            <% } %>
+                          </small>
+                        </div>
+                      </div>
+                    <% }) %>
+                  </div>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+  </div>
+</div>
+<% } else { %>
+<div class="card border-0 shadow-sm">
+  <div class="card-body">
+    <h5 class="mb-3">Raporlar</h5>
+    <div class="list-group">
+      <a href="/rapor-olustur/anahtar-eksikleri" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-key me-2"></i> Anahtar Eksiklerini Gör</span>
+        <i class="bi bi-chevron-right text-muted"></i>
+      </a>
+      <a href="/rapor-olustur/oda-sorunlari" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-exclamation-triangle me-2"></i> Oda Sorunları Raporu</span>
+        <i class="bi bi-chevron-right text-muted"></i>
+      </a>
+      <a href="/rapor-olustur/personel-sikayetleri" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-chat-dots me-2"></i> Personel Şikayetleri Raporu</span>
+        <i class="bi bi-chevron-right text-muted"></i>
+      </a>
+    </div>
+    <small class="text-muted d-block mt-3">Diğer rapor türlerini sırayla buraya ekleyeceğiz.</small>
+  </div>
+</div>
+<% } %>
+<% } %>
+
+<% if (mode === 'room-issues' || mode === 'key-shortage' || mode === 'personel-sikayetleri') { %>
+<script>
+  (function () {
+    let refreshTimer = null;
+
+    function scheduleRefresh() {
+      if (document.hidden) return;
+      if (refreshTimer) return;
+      refreshTimer = setTimeout(() => {
+        window.location.reload();
+      }, 250);
+    }
+
+    if (typeof socket !== 'undefined' && socket) {
+      socket.on('report:refresh', scheduleRefresh);
+      socket.on('personnel:room-update', scheduleRefresh);
+    }
+  })();
+</script>
+<% } %>
+
+<%- include('footer') %>

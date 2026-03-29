@@ -52,6 +52,7 @@ app.use('/dashboard', require('./routes/dashboard'));
 app.use('/odalar', require('./routes/rooms'));
 app.use('/personel', require('./routes/personnel'));
 app.use('/giris-cikis', require('./routes/entries'));
+app.use('/rapor-olustur', require('./routes/reports'));
 app.use('/gecmis', require('./routes/history'));
 app.use('/esya-takip', require('./routes/equipment'));
 app.use('/ziyaretciler', require('./routes/visitors'));

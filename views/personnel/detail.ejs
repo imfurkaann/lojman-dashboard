@@ -561,34 +561,7 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...(p
               </div>
             </div>
 
-            <% requiredInventoryItems.forEach((itemName, idx) => { %>
-              <div class="border rounded p-2 mb-2 reassign-handover-item" data-item-name="<%= itemName %>">
-                <div class="mb-2">
-                  <strong><%= itemName %></strong>
-                  <div class="form-check mt-1 mb-2">
-                    <input class="form-check-input reassign-delivered" type="radio" name="reassign_delivery_<%= idx %>" id="reassign_delivered_yes_<%= idx %>" value="yes">
-                    <label class="form-check-label" for="reassign_delivered_yes_<%= idx %>">✓ Sağlam Teslim Edildi</label>
-                  </div>
-                  <div class="form-check">
-                    <input class="form-check-input reassign-delivered-no" type="radio" name="reassign_delivery_<%= idx %>" id="reassign_delivered_no_<%= idx %>" value="no">
-                    <label class="form-check-label" for="reassign_delivered_no_<%= idx %>">✗ Teslim Edilmedi</label>
-                  </div>
-                </div>
-                <div class="reassign-problem" style="display:none; padding-top: 10px; border-top: 1px solid #dee2e6;">
-                  <label class="form-label form-label-sm">Sorun Türü *</label>
-                  <select class="form-select form-select-sm reassign-tag mb-2">
-                    <option value="">Seçin</option>
-                    <option value="eksik">Eksik</option>
-                    <option value="kirik">Kırık</option>
-                    <option value="calismiyor">Çalışmıyor</option>
-                    <option value="kayip">Kayıp</option>
-                    <option value="diger">Diğer</option>
-                  </select>
-                  <label class="form-label form-label-sm">Açıklama</label>
-                  <textarea class="form-control form-control-sm reassign-description" rows="2" placeholder="Opsiyonel açıklama..."></textarea>
-                </div>
-              </div>
-            <% }) %>
+            <div id="reassignItemsContainer"></div>
 
             <div class="border rounded p-2 mt-3">
               <div class="d-flex justify-content-between align-items-center">
@@ -628,7 +601,7 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...(p
         <div class="modal-body" style="max-height: 60vh; overflow-y: auto;">
           <p class="text-muted mb-3">Çıkıştan önce aşağıdaki demirbaşların teslim durumunu işaretleyin.</p>
 
-          <% requiredInventoryItems.forEach((itemName, idx) => { %>
+          <% (checkoutInventoryItems || []).forEach((itemName, idx) => { %>
             <div class="border rounded p-2 mb-2 checkout-item" data-item-name="<%= itemName %>">
               <div class="d-flex justify-content-between align-items-center mb-2">
                 <strong><%= itemName %></strong>
@@ -712,6 +685,8 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...(p
 </div>
 
 <script id="checkoutIssueMapData" type="application/json"><%- JSON.stringify(openCheckoutIssueMap || {}) %></script>
+<script id="roomInventoryItemsMapData" type="application/json"><%- JSON.stringify(roomInventoryItemsMap || {}) %></script>
+<script id="roomOpenIssueMapData" type="application/json"><%- JSON.stringify(roomOpenIssueMap || {}) %></script>
 
 <script>
 // Edit modal logic (mirrors add-personnel modal UX)
@@ -1029,18 +1004,134 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...(p
   const isExited = "<%= person.status %>" === 'cikis_yapti';
   if (!isExited) return;
 
+  const roomInventoryItemsRaw = document.getElementById('roomInventoryItemsMapData');
+  const roomOpenIssueMapRaw = document.getElementById('roomOpenIssueMapData');
+  let roomInventoryItemsMap = {};
+  let roomOpenIssueMap = {};
+
+  try {
+    roomInventoryItemsMap = roomInventoryItemsRaw ? JSON.parse(roomInventoryItemsRaw.textContent || '{}') : {};
+  } catch (_) {
+    roomInventoryItemsMap = {};
+  }
+
+  try {
+    roomOpenIssueMap = roomOpenIssueMapRaw ? JSON.parse(roomOpenIssueMapRaw.textContent || '{}') : {};
+  } catch (_) {
+    roomOpenIssueMap = {};
+  }
+
   const reassignForm = document.querySelector('#changeRoomModal form');
   const roomSelect = document.getElementById('reassignRoomSelect');
   const section = document.getElementById('reassignHandoverSection');
+  const itemsContainer = document.getElementById('reassignItemsContainer');
   const payloadInput = document.getElementById('reassignHandoverPayloadInput');
-  if (!reassignForm || !roomSelect || !section || !payloadInput) return;
+  if (!reassignForm || !roomSelect || !section || !itemsContainer || !payloadInput) return;
+
+  function normalizeName(name) {
+    return String(name || '').trim().toLocaleLowerCase('tr-TR');
+  }
+
+  function getRoomItems(roomId) {
+    const list = roomInventoryItemsMap[String(roomId)] || roomInventoryItemsMap[roomId] || [];
+    return Array.isArray(list) ? list : [];
+  }
+
+  function getOpenIssue(roomId, itemName) {
+    const roomIssues = roomOpenIssueMap[String(roomId)] || {};
+    return roomIssues[normalizeName(itemName)] || null;
+  }
+
+  function renderReassignItems(roomId) {
+    const items = getRoomItems(roomId);
+    if (!items.length) {
+      itemsContainer.innerHTML = '<div class="text-muted small mb-2">Bu odada teslim kontrolü gerektiren demirbaş bulunmuyor.</div>';
+      return;
+    }
+
+    itemsContainer.innerHTML = items.map((itemName, idx) => {
+      const safeName = String(itemName || '').replace(/"/g, '&quot;');
+      return `
+        <div class="border rounded p-2 mb-2 reassign-handover-item" data-item-name="${safeName}">
+          <div class="mb-2">
+            <strong>${safeName}</strong>
+            <div class="form-check mt-1 mb-2">
+              <input class="form-check-input reassign-delivered" type="radio" name="reassign_delivery_${idx}" id="reassign_delivered_yes_${idx}" value="yes" checked>
+              <label class="form-check-label" for="reassign_delivered_yes_${idx}">✓ Sağlam Teslim Edildi</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input reassign-delivered-no" type="radio" name="reassign_delivery_${idx}" id="reassign_delivered_no_${idx}" value="no">
+              <label class="form-check-label" for="reassign_delivered_no_${idx}">✗ Teslim Edilmedi</label>
+            </div>
+          </div>
+          <div class="reassign-problem" style="display:none; padding-top: 10px; border-top: 1px solid #dee2e6;">
+            <label class="form-label form-label-sm">Sorun Türü *</label>
+            <select class="form-select form-select-sm reassign-tag mb-2">
+              <option value="">Seçin</option>
+              <option value="eksik">Eksik</option>
+              <option value="arizali">Arızalı</option>
+              <option value="kirik">Kırık</option>
+              <option value="calismiyor">Çalışmıyor</option>
+              <option value="kayip">Kayıp</option>
+              <option value="diger">Diğer</option>
+            </select>
+            <label class="form-label form-label-sm">Açıklama</label>
+            <textarea class="form-control form-control-sm reassign-description" rows="2" placeholder="Opsiyonel açıklama..."></textarea>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function applyReassignIssueDefaults(roomId) {
+    section.querySelectorAll('.reassign-handover-item').forEach(itemEl => {
+      const itemName = itemEl.getAttribute('data-item-name') || '';
+      const issue = getOpenIssue(roomId, itemName);
+      const yesRadio = itemEl.querySelector('.reassign-delivered[value="yes"]');
+      const noRadio = itemEl.querySelector('.reassign-delivered-no[value="no"]');
+      const problem = itemEl.querySelector('.reassign-problem');
+      const tag = itemEl.querySelector('.reassign-tag');
+      const desc = itemEl.querySelector('.reassign-description');
+
+      if (issue) {
+        if (noRadio) noRadio.checked = true;
+        if (problem) problem.style.display = 'block';
+        if (tag) tag.value = issue.tag || '';
+        if (desc) desc.value = issue.description || '';
+      } else {
+        if (yesRadio) yesRadio.checked = true;
+        if (problem) problem.style.display = 'none';
+        if (tag) tag.value = '';
+        if (desc) desc.value = '';
+      }
+    });
+  }
+
+  async function resolveRoomIssueInBackground(roomId, itemName) {
+    const response = await fetch(`/odalar/${roomId}/demirbas-sorun-coz`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({ item_name: itemName })
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.error || 'Sorun kaydı çözümlenirken hata oluştu.');
+    }
+  }
 
   function toggleSection() {
     if (roomSelect.value) {
       section.style.display = 'block';
+      renderReassignItems(roomSelect.value);
+      applyReassignIssueDefaults(roomSelect.value);
     } else {
       section.style.display = 'none';
       payloadInput.value = '';
+      itemsContainer.innerHTML = '';
     }
   }
 
@@ -1050,15 +1141,48 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...(p
   section.addEventListener('change', (e) => {
     const t = e.target;
     if (!t) return;
+
     if (t.classList.contains('reassign-delivered-no')) {
       const item = t.closest('.reassign-handover-item');
       const problem = item ? item.querySelector('.reassign-problem') : null;
       if (problem) problem.style.display = t.checked ? 'block' : 'none';
     }
+
     if (t.classList.contains('reassign-delivered') && t.value === 'yes' && t.checked) {
       const item = t.closest('.reassign-handover-item');
       const problem = item ? item.querySelector('.reassign-problem') : null;
-      if (problem) problem.style.display = 'none';
+      const itemName = item ? (item.getAttribute('data-item-name') || '').trim() : '';
+      const issue = getOpenIssue(roomSelect.value, itemName);
+
+      if (!issue) {
+        if (problem) problem.style.display = 'none';
+        return;
+      }
+
+      const noRadio = item ? item.querySelector('.reassign-delivered-no[value="no"]') : null;
+      const confirmed = window.confirm('Bu demirbaş için açık sorun kaydı var. Sağlam teslim edildi olarak işaretlerseniz ilgili sorun çözüldü kabul edilecektir. Onaylıyor musunuz?');
+      if (!confirmed) {
+        if (noRadio) noRadio.checked = true;
+        if (problem) problem.style.display = 'block';
+        return;
+      }
+
+      resolveRoomIssueInBackground(roomSelect.value, itemName)
+        .then(() => {
+          const roomIssues = roomOpenIssueMap[String(roomSelect.value)] || {};
+          delete roomIssues[normalizeName(itemName)];
+          roomOpenIssueMap[String(roomSelect.value)] = roomIssues;
+          if (problem) problem.style.display = 'none';
+          const tag = item ? item.querySelector('.reassign-tag') : null;
+          const desc = item ? item.querySelector('.reassign-description') : null;
+          if (tag) tag.value = '';
+          if (desc) desc.value = '';
+        })
+        .catch((err) => {
+          alert(err.message || 'Sorun kaydı çözümlenirken hata oluştu.');
+          if (noRadio) noRadio.checked = true;
+          if (problem) problem.style.display = 'block';
+        });
     }
   });
 

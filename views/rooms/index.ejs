@@ -165,9 +165,9 @@
 <!-- Filtre -->
 <div class="card border-0 shadow-sm mb-4">
   <div class="card-body py-2">
-    <form method="GET" class="row g-2 align-items-center">
+    <form method="GET" class="row g-2 align-items-center" id="roomsFilterForm">
       <div class="col-md-3">
-        <input type="text" class="form-control form-control-sm" name="search" placeholder="Oda numarası ara..." value="<%= search %>">
+        <input type="text" class="form-control form-control-sm" id="roomsSearchInput" name="search" placeholder="Oda numarası ara..." value="<%= search %>">
       </div>
       <div class="col-md-2">
         <select class="form-select form-select-sm" name="floor" onchange="this.form.submit()">
@@ -393,4 +393,18 @@ document.querySelectorAll('.room-card-container').forEach(container => {
     }
   });
 });
+
+const roomsFilterForm = document.getElementById('roomsFilterForm');
+const roomsSearchInput = document.getElementById('roomsSearchInput');
+if (roomsFilterForm && roomsSearchInput) {
+  let searchDebounceTimer = null;
+  roomsSearchInput.addEventListener('input', () => {
+    if (searchDebounceTimer) {
+      clearTimeout(searchDebounceTimer);
+    }
+    searchDebounceTimer = setTimeout(() => {
+      roomsFilterForm.submit();
+    }, 250);
+  });
+}
 </script>

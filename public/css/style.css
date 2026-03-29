@@ -129,3 +129,38 @@
 .nav-tabs .nav-link.active {
   font-weight: 600;
 }
+
+/* Room issues report horizontal layout */
+.room-issues-table-wrap {
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+.room-issues-table {
+  min-width: 960px;
+}
+
+.room-issues-table th,
+.room-issues-table td {
+  white-space: nowrap;
+}
+
+.room-issues-table th:last-child,
+.room-issues-table td:last-child {
+  white-space: normal;
+  min-width: 260px;
+}
+
+.room-issues-table th:first-child,
+.room-issues-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: #fff;
+}
+
+.room-issues-table thead th:first-child {
+  z-index: 3;
+  background: #f8f9fa;
+}
