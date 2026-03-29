@@ -2,7 +2,9 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 
-const dbPath = path.join(__dirname, 'lojman.db');
+const dbPath = process.env.DB_PATH
+  ? path.resolve(process.env.DB_PATH)
+  : path.join(__dirname, 'lojman.db');
 const db = new Database(dbPath);
 
 // WAL mode for better performance
@@ -385,27 +387,6 @@ function runMigrations() {
     END
   `);
 
-  // Yeni anahtar modeline gecis:
-  // max_quantity = odadaki toplam mevcut anahtar stogu
-  // quantity = eldeki/yedek anahtar
-  // Eski modelde cikista teslim edilmeyen anahtarlar quantity'den de dusuyordu.
-  // Bu nedenle mevcut verileri max_quantity = quantity + aktif personele teslimli anahtar sayisi
-  // formulu ile normalize ediyoruz (idempotent).
-  db.exec(`
-    UPDATE room_inventory AS ri
-    SET max_quantity = MAX(
-      0,
-      COALESCE(ri.quantity, 0) + (
-        SELECT COUNT(*)
-        FROM personnel p
-        WHERE p.room_id = ri.room_id
-          AND p.status = 'aktif'
-          AND COALESCE(p.key_delivered, 0) = 1
-      )
-    )
-    WHERE LOWER(ri.item_name) = LOWER('Oda Anahtarı')
-  `);
-
   // Personnel tablosuna TC kimlik, fotoğraf ve form_signed alanları ekle
   const personnelColumns = db.prepare('PRAGMA table_info(personnel)').all();
   const hasTcNumber = personnelColumns.some(col => col.name === 'tc_number');
@@ -508,6 +489,27 @@ function runMigrations() {
     `);
     console.log('Migration: personnel status alanına bosta değeri eklendi');
   }
+
+  // Yeni anahtar modeline gecis (after migrations, key_delivered column is guaranteed to exist):
+  // max_quantity = odadaki toplam mevcut anahtar stogu
+  // quantity = eldeki/yedek anahtar
+  // Eski modelde cikista teslim edilmeyen anahtarlar quantity'den de dusuyordu.
+  // Bu nedenle mevcut verileri max_quantity = quantity + aktif personele teslimli anahtar sayisi
+  // formulu ile normalize ediyoruz (idempotent).
+  db.exec(`
+    UPDATE room_inventory AS ri
+    SET max_quantity = MAX(
+      0,
+      COALESCE(ri.quantity, 0) + (
+        SELECT COUNT(*)
+        FROM personnel p
+        WHERE p.room_id = ri.room_id
+          AND p.status = 'aktif'
+          AND COALESCE(p.key_delivered, 0) = 1
+      )
+    )
+    WHERE LOWER(ri.item_name) = LOWER('Oda Anahtarı')
+  `);
 
   db.exec(`
     UPDATE personnel

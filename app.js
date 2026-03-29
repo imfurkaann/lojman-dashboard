@@ -12,7 +12,7 @@ const io = socketIo(server, {
     methods: ["GET", "POST"]
   }
 });
-const PORT = 3000;
+const PORT = Number(process.env.PORT || 3000);
 
 // Veritabanını başlat
 initDatabase();

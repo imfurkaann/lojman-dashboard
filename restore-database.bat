@@ -1,88 +1,84 @@
 @echo off
 REM Lojman Dashboard - Database Restore Script
-REM Yedeklenmiş bir veritabanını geri yükler
+REM Restores database from a backup
 
 setlocal enabledelayedexpansion
 
 cls
 echo.
 echo ===============================================
-echo   LOJMAN DASHBOARD - VERİTABANI GERİ YÜKLEME
+echo   LOJMAN DASHBOARD - DATABASE RESTORE
 echo ===============================================
 echo.
 
-REM Docker'ın çalışıp çalışmadığını kontrol et
 docker ps >NUL 2>&1
 if %ERRORLEVEL% neq 0 (
-    echo [HATA] Docker Desktop çalışmıyor!
-    echo Lütfen Docker Desktop'ı açın ve tekrar deneyin.
+    echo [ERROR] Docker Desktop is not running!
+    echo Please start Docker Desktop and try again.
     echo.
     pause
     exit /b 1
 )
 
-REM Backup dosyalarını listele
-echo [*] Mevcut yedekler:
+echo [*] Available backups:
 echo.
 dir /b backups\lojman.db.backup_*.tar.gz 2>NUL
 if %ERRORLEVEL% neq 0 (
-    echo [HATA] Backup dosyası bulunamadı!
-    echo Lütfen önce backup-database.bat ile yedek oluşturun.
+    echo [ERROR] No backup files found!
+    echo Please create a backup first using backup-database.bat
     echo.
     pause
     exit /b 1
 )
 
 echo.
-set /p backupfile="Geri yüklenecek dosya adını girin (sadece dosya adı): "
+set /p backupfile="Enter backup filename to restore (filename only): "
 
 if not exist "backups\%backupfile%" (
-    echo [HATA] Dosya bulunamadı: backups\%backupfile%
+    echo [ERROR] File not found: backups\%backupfile%
     echo.
     pause
     exit /b 1
 )
 
-REM Uyarı
 echo.
 echo ===============================================
-echo [!] UYARI: Mevcut veritabanı silinecek!
+echo [!] WARNING: Current database will be deleted!
 echo ===============================================
 echo.
-set /p confirm="Emin misiniz? (E/H): "
+set /p confirm="Are you sure? (Y/N): "
 
-if /i not "%confirm%"=="E" (
-    echo Geri yükleme iptal edildi.
+if /i not "%confirm%"=="Y" (
+    echo Restore cancelled.
     echo.
     pause
     exit /b 0
 )
 
 echo.
-echo [*] Veritabanı geri yükleniyor...
+echo [*] Restoring database...
 echo.
 
-REM Docker container'ı durdur (varsa)
 docker stop lojman-dashboard >NUL 2>&1
 
-REM Volume'ü temizle ve geri yükle
 docker run --rm ^
   -v lojman_dashboard_lojman-db-volume:/data ^
   -v "%cd%\backups:/backup" ^
   busybox sh -c "rm -f /data/lojman.db && tar xzf /backup/%backupfile% -C /data" 2>NUL
 
 if %ERRORLEVEL% equ 0 (
-    echo [OK] Veritabanı başarıyla geri yüklendi!
+    echo [OK] Database restored successfully!
     echo.
     echo ===============================================
-    echo [OK] GERİ YÜKLEME TAMAMLANDI
+    echo [OK] RESTORE COMPLETED
     echo ===============================================
     echo.
-    echo Uygulamayı başlatmak için start-dashboard.bat komutunu çalıştırın.
+    echo Run start-dashboard.bat to start the application.
 ) else (
-    echo [HATA] Geri yükleme başarısız oldu!
-    echo Lütfen Docker'ın çalıştığından emin olun.
+    echo [ERROR] Restore failed!
+    echo Please ensure Docker is running.
 )
 
 echo.
 pause
+exit /b 0
