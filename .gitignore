@@ -1,3 +1,46 @@
+# Dependencies
 node_modules/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Database files (local development only)
+# NOTE: Docker volumes are managed by Docker and NOT stored in this repo
 *.db
+*.db-shm
+*.db-wal
 sessions.db
+data/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Build
+dist/
+build/
+
+# Uploads (local development only)
+# NOTE: Docker volume 'uploads-volume' is managed by Docker
+public/uploads/*
+!public/uploads/.gitkeep
+
+# Temporary backup files (keep main backups folder for reference)
+backups/*.tmp
+*.db.tmp

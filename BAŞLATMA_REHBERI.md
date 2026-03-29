@@ -25,6 +25,23 @@ Proje klasöründe şu 2 dosyayı göreceksiniz:
 - `stop-dashboard.bat` dosyasına **çift tıklayın**
 - Sistemi kapatacak
 
+### 🛡️ Veritabanı Yedekleme
+
+Veritabanı verileriniz Docker tarafından korunur, ancak yine de **düzenli backup almak önemlidir**.
+
+#### Yedek Almak İçin:
+1. `backup-database.bat` dosyasına **çift tıklayın**
+2. Yedek `backups/` klasörüne kaydedilecek
+3. Otomatik backup için Windows Task Scheduler'da ayarlayabilirsiniz
+
+#### Yedekten Geri Yükleme:
+1. `restore-database.bat` dosyasına **çift tıklayın**
+2. Geri yüklenecek yedek dosyasını seçin
+3. Onay verin
+4. Sistem otomatik yeniden başlayacak
+
+**📌 Daha detaylı bilgi için:** `DATABASE_PROTECTION.md` dosyasını okuyun
+
 ### 📌 Başlangıç Bilgileri
 
 | Adres | Açıklama |
