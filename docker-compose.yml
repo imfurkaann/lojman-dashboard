@@ -8,16 +8,18 @@ services:
       NODE_ENV: production
       PORT: 3000
       DB_PATH: /data/lojman.db
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
     volumes:
       - lojman-db-volume:/data
       - uploads-volume:/app/public/uploads
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      test: ["CMD", "curl", "-f", "http://localhost:3000/dashboard"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 40s
+      retries: 5
+      start_period: 45s
 
 volumes:
   lojman-db-volume:
