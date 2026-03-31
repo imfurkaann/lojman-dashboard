@@ -69,6 +69,17 @@ app.use((req, res) => {
   res.status(404).render('404');
 });
 
+server.on('error', (error) => {
+  if (error && error.code === 'EADDRINUSE') {
+    console.error(`[HATA] Port ${PORT} zaten kullanımda.`);
+    console.error('[INFO] Docker konteyneri çalışıyorsa önce `docker compose down` komutunu çalıştırın.');
+    console.error('[INFO] Alternatif olarak farklı port ile başlatın: PowerShell -> `$env:PORT=3001; npm start`');
+    process.exit(1);
+  }
+
+  throw error;
+});
+
 server.listen(PORT, () => {
   console.log(`Lojman Dashboard çalışıyor: http://localhost:${PORT}`);
 });

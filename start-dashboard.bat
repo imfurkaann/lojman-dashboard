@@ -11,6 +11,10 @@ echo   LOJMAN DASHBOARD - STARTING
 echo ===============================================
 echo.
 
+set "APP_PORT=%PORT%"
+if "%APP_PORT%"=="" set "APP_PORT=3000"
+set "REQUESTED_PORT=%APP_PORT%"
+
 if not exist "C:\Program Files\Docker\Docker\Docker Desktop.exe" (
     if not exist "C:\Program Files (x86)\Docker\Docker\Docker Desktop.exe" (
         echo [ERROR] Docker Desktop not found!
@@ -46,18 +50,36 @@ if "%ERRORLEVEL%"=="1" (
 )
 
 :docker_ready
+for /L %%p in (%APP_PORT%,1,3100) do (
+    powershell -NoProfile -Command "if (Get-NetTCPConnection -LocalPort %%p -State Listen -ErrorAction SilentlyContinue) { exit 1 } else { exit 0 }"
+    if !ERRORLEVEL! equ 0 (
+        set "APP_PORT=%%p"
+        goto port_ready
+    )
+)
+
+echo [ERROR] 3000-3100 araliginda bos port bulunamadi.
+pause
+exit /b 1
+
+:port_ready
+if not "!APP_PORT!"=="!REQUESTED_PORT!" (
+    echo [*] 3000 portu dolu oldugu icin !APP_PORT! portu kullanilacak.
+)
+
 echo.
 echo [*] Starting application...
 echo.
 
 cd /d "%~dp0"
+set "PORT=!APP_PORT!"
 docker compose up -d
 
 echo [*] Waiting for application to start...
 set "max_wait=30"
 for /L %%i in (1,1,%max_wait%) do (
     timeout /t 1 /nobreak
-    curl -s http://localhost:3000 >NUL 2>&1
+    curl -s http://localhost:!APP_PORT! >NUL 2>&1
     if !ERRORLEVEL! equ 0 (
         echo [OK] Application ready!
         goto app_ready
@@ -70,9 +92,9 @@ echo ===============================================
 echo [OK] LOJMAN DASHBOARD IS RUNNING
 echo ===============================================
 echo.
-echo Address: http://localhost:3000
+echo Address: http://localhost:!APP_PORT!
 echo.
 
-start "" "http://localhost:3000"
+start "" "http://localhost:!APP_PORT!"
 timeout /t 2 /nobreak
 exit /b 0
