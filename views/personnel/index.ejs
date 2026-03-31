@@ -36,11 +36,87 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
 <!-- Filtre -->
 <div class="card border-0 shadow-sm mb-4">
   <div class="card-body py-2">
-    <form method="GET" class="row g-2 align-items-center" id="personnelFilterForm">
-      <div class="col-md-3">
+    <style>
+      .personnel-filters-grid {
+        display: grid;
+        gap: 0.5rem;
+        align-items: end;
+        grid-template-columns: minmax(180px, 2.4fr) minmax(130px, 1.3fr) minmax(130px, 1.3fr) minmax(150px, 1.5fr) minmax(150px, 1.5fr) minmax(150px, 1.5fr) auto;
+      }
+
+      .personnel-filter-item {
+        min-width: 0;
+      }
+
+      .personnel-filter-search {
+        grid-column: 1;
+      }
+
+      .personnel-filter-department,
+      .personnel-filter-status {
+        grid-column: auto;
+      }
+
+      .personnel-filter-date {
+        grid-column: auto;
+      }
+
+      .personnel-filter-actions {
+        grid-column: auto;
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.5rem;
+      }
+
+      .personnel-filter-actions .btn {
+        white-space: nowrap;
+      }
+
+      @media (max-width: 1199.98px) {
+        .personnel-filters-grid {
+          grid-template-columns: repeat(6, minmax(0, 1fr));
+        }
+
+        .personnel-filter-search {
+          grid-column: span 6;
+        }
+
+        .personnel-filter-department,
+        .personnel-filter-status,
+        .personnel-filter-date {
+          grid-column: span 3;
+        }
+
+        .personnel-filter-actions {
+          grid-column: span 12;
+          justify-content: flex-end;
+        }
+      }
+
+      @media (max-width: 767.98px) {
+        .personnel-filter-search,
+        .personnel-filter-department,
+        .personnel-filter-status,
+        .personnel-filter-date,
+        .personnel-filter-actions {
+          grid-column: span 12;
+        }
+
+        .personnel-filter-actions {
+          justify-content: stretch;
+        }
+
+        .personnel-filter-actions .btn {
+          flex: 1 1 auto;
+        }
+      }
+    </style>
+
+    <form method="GET" class="personnel-filters-grid" id="personnelFilterForm">
+      <div class="personnel-filter-item personnel-filter-search">
         <input type="text" class="form-control form-control-sm" id="personnelSearchInput" name="search" placeholder="İsim veya telefon ara..." value="<%= search %>">
       </div>
-      <div class="col-md-2">
+      <div class="personnel-filter-item personnel-filter-department">
         <select class="form-select form-select-sm" name="department" onchange="this.form.submit()">
           <option value="">Tüm Departmanlar</option>
           <% departmentOptions.forEach(dep => { %>
@@ -48,13 +124,35 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
           <% }) %>
         </select>
       </div>
-      <div class="col-md-2">
+      <div class="personnel-filter-item personnel-filter-status">
         <select class="form-select form-select-sm" name="status" onchange="this.form.submit()">
           <option value="" <%= statusFilter === '' ? 'selected' : '' %>>Tümü</option>
           <option value="aktif" <%= statusFilter === 'aktif' ? 'selected' : '' %>>Aktif</option>
           <option value="cikis_yapti" <%= statusFilter === 'cikis_yapti' ? 'selected' : '' %>>Çıkış Yapmış</option>
           <option value="bosta" <%= statusFilter === 'bosta' ? 'selected' : '' %>>Boşta</option>
         </select>
+      </div>
+      <div class="personnel-filter-item personnel-filter-date">
+        <label class="form-label form-label-sm mb-1">Sisteme Kayıt Tarihi</label>
+        <input type="text" class="form-control form-control-sm" id="createdAtRange" placeholder="Başlangıç - Bitiş seçin" autocomplete="off">
+        <input type="hidden" name="created_at_from" id="createdAtFromHidden" value="<%= createdAtFrom || '' %>">
+        <input type="hidden" name="created_at_to" id="createdAtToHidden" value="<%= createdAtTo || '' %>">
+      </div>
+      <div class="personnel-filter-item personnel-filter-date">
+        <label class="form-label form-label-sm mb-1">Odaya Yerleşme Tarihi</label>
+        <input type="text" class="form-control form-control-sm" id="checkInRange" placeholder="Başlangıç - Bitiş seçin" autocomplete="off">
+        <input type="hidden" name="check_in_from" id="checkInFromHidden" value="<%= checkInFrom || '' %>">
+        <input type="hidden" name="check_in_to" id="checkInToHidden" value="<%= checkInTo || '' %>">
+      </div>
+      <div class="personnel-filter-item personnel-filter-date">
+        <label class="form-label form-label-sm mb-1">Odadan Çıkış Tarihi</label>
+        <input type="text" class="form-control form-control-sm" id="checkOutRange" placeholder="Başlangıç - Bitiş seçin" autocomplete="off">
+        <input type="hidden" name="check_out_from" id="checkOutFromHidden" value="<%= checkOutFrom || '' %>">
+        <input type="hidden" name="check_out_to" id="checkOutToHidden" value="<%= checkOutTo || '' %>">
+      </div>
+      <div class="personnel-filter-item personnel-filter-actions">
+        <a href="/personel" class="btn btn-sm btn-outline-secondary">Temizle</a>
+        <button type="submit" class="btn btn-sm btn-primary">Filtrele</button>
       </div>
     </form>
   </div>
@@ -74,7 +172,6 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
         <thead class="table-light">
           <tr>
             <th>Ad Soyad</th>
-            <th>TC Kimlik</th>
             <th>Cinsiyet</th>
             <th>Departman</th>
             <th>İlk Kayıt</th>
@@ -91,7 +188,6 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
                 <%= p.first_name %> <%= p.last_name %>
               </a>
             </td>
-            <td><%= p.tc_number || '-' %></td>
             <td><%= p.gender === 'erkek' ? 'Erkek' : 'Kadın' %></td>
             <td><%= p.department || '-' %></td>
             <td><%= p.created_at ? new Date(p.created_at).toLocaleDateString('tr-TR') : '-' %></td>
@@ -151,8 +247,8 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
               </select>
             </div>
             <div class="col-6">
-              <label class="form-label">TC Kimlik Numarası *</label>
-              <input type="text" class="form-control" name="tc_number" placeholder="11 haneli TC no" required>
+              <label class="form-label">TC Kimlik No *</label>
+              <input type="text" class="form-control" name="tc_number" placeholder="11 haneli TC no" required maxlength="11" pattern="[0-9]{11}">
             </div>
           </div>
           <div class="row g-3 mt-1">
@@ -201,6 +297,7 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
                   <small class="text-muted d-block mt-2">İlk kullanımda kamera izni isteyebilir.</small>
                 </div>
                 <input type="hidden" name="captured_photo" id="capturedPhotoFlag" value="0">
+                <input type="hidden" name="captured_photo_data" id="capturedPhotoData" value="">
               </div>
 
               <div class="mt-2" id="uploadInputWrap" style="display:none;">
@@ -330,6 +427,10 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
 
 <%- include('../footer') %>
 
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/tr.js"></script>
+
 <script>
 const roomInventoryMap = <%- JSON.stringify(roomInventoryMap || {}) %>;
 const roomInventoryItemsMap = <%- JSON.stringify(roomInventoryItemsMap || {}) %>;
@@ -358,8 +459,54 @@ const capturedPreview = document.getElementById('capturedPreview');
 const takePhotoBtn = document.getElementById('takePhotoBtn');
 const stopCameraBtn = document.getElementById('stopCameraBtn');
 const capturedPhotoFlag = document.getElementById('capturedPhotoFlag');
+const capturedPhotoData = document.getElementById('capturedPhotoData');
 const personnelFilterForm = document.getElementById('personnelFilterForm');
 const personnelSearchInput = document.getElementById('personnelSearchInput');
+const createdAtRange = document.getElementById('createdAtRange');
+const checkInRange = document.getElementById('checkInRange');
+const checkOutRange = document.getElementById('checkOutRange');
+
+function setupDateRangePicker(inputEl, fromHiddenElId, toHiddenElId) {
+  if (!inputEl) return;
+  const fromHiddenEl = document.getElementById(fromHiddenElId);
+  const toHiddenEl = document.getElementById(toHiddenElId);
+  if (!fromHiddenEl || !toHiddenEl) return;
+
+  const defaultDates = [];
+  if (fromHiddenEl.value) defaultDates.push(fromHiddenEl.value);
+  if (toHiddenEl.value) defaultDates.push(toHiddenEl.value);
+
+  const picker = flatpickr(inputEl, {
+    mode: 'range',
+    dateFormat: 'Y-m-d',
+    locale: (flatpickr && flatpickr.l10ns && flatpickr.l10ns.tr) ? flatpickr.l10ns.tr : 'tr',
+    defaultDate: defaultDates,
+    onChange: (selectedDates) => {
+      if (!selectedDates || selectedDates.length === 0) {
+        fromHiddenEl.value = '';
+        toHiddenEl.value = '';
+        return;
+      }
+
+      fromHiddenEl.value = selectedDates[0] ? flatpickr.formatDate(selectedDates[0], 'Y-m-d') : '';
+      toHiddenEl.value = selectedDates[1] ? flatpickr.formatDate(selectedDates[1], 'Y-m-d') : '';
+    }
+  });
+
+  // Tek tarih seçilip bırakılırsa da başlangıç/bitiş aynı tarih olsun.
+  inputEl.addEventListener('blur', () => {
+    if (fromHiddenEl.value && !toHiddenEl.value) {
+      toHiddenEl.value = fromHiddenEl.value;
+      if (picker) picker.setDate([fromHiddenEl.value, fromHiddenEl.value], false);
+    }
+  });
+}
+
+if (typeof flatpickr !== 'undefined') {
+  setupDateRangePicker(createdAtRange, 'createdAtFromHidden', 'createdAtToHidden');
+  setupDateRangePicker(checkInRange, 'checkInFromHidden', 'checkInToHidden');
+  setupDateRangePicker(checkOutRange, 'checkOutFromHidden', 'checkOutToHidden');
+}
 
 if (personnelFilterForm && personnelSearchInput) {
   let searchDebounceTimer = null;
@@ -390,6 +537,7 @@ function setTakeButtonLabel() {
 function clearCapturedPreview() {
   capturedBlob = null;
   if (capturedPhotoFlag) capturedPhotoFlag.value = '0';
+  if (capturedPhotoData) capturedPhotoData.value = '';
   if (capturedPreview) {
     capturedPreview.style.display = 'none';
     capturedPreview.src = '';
@@ -463,6 +611,9 @@ function takeSnapshot() {
   canvas.toBlob((blob) => {
     if (!blob) return;
     capturedBlob = blob;
+    if (capturedPhotoData) {
+      capturedPhotoData.value = canvas.toDataURL('image/jpeg', 0.9);
+    }
     if (capturedPhotoFlag) capturedPhotoFlag.value = '1';
     if (capturedPreview) {
       capturedPreview.src = URL.createObjectURL(blob);
@@ -483,6 +634,7 @@ if (addPhotoBtn && photoOptions) {
       if (uploadPhotoInput) uploadPhotoInput.value = '';
       capturedBlob = null;
       if (capturedPhotoFlag) capturedPhotoFlag.value = '0';
+      if (capturedPhotoData) capturedPhotoData.value = '';
       stopCamera();
     }
   });
@@ -530,6 +682,7 @@ if (addPersonnelModalEl) {
     stopCamera();
     capturedBlob = null;
     if (capturedPhotoFlag) capturedPhotoFlag.value = '0';
+    if (capturedPhotoData) capturedPhotoData.value = '';
     if (capturedPreview) {
       capturedPreview.style.display = 'none';
       capturedPreview.src = '';
@@ -884,7 +1037,6 @@ document.querySelector('#addPersonnelModal form').addEventListener('submit', fun
           // Duplicate bulundu - modal göster
           const duplicateModal = new bootstrap.Modal(document.getElementById('duplicatePersonelModal'), { backdrop: 'static', keyboard: false });
           document.getElementById('existingPersonName').textContent = `${result.existingPerson.first_name} ${result.existingPerson.last_name}`;
-          document.getElementById('existingPersonTC').textContent = result.existingPerson.tc_number || '-';
           document.getElementById('existingPersonGender').textContent = result.existingPerson.gender === 'erkek' ? 'Erkek' : 'Kadın';
           document.getElementById('existingPersonDept').textContent = result.existingPerson.department || '-';
           document.getElementById('existingPersonPhone').textContent = result.existingPerson.phone || '-';
@@ -965,10 +1117,7 @@ if (assignRoomForm) {
               <small class="text-muted">Ad Soyad:</small>
               <p class="fw-bold mb-0" id="existingPersonName">-</p>
             </div>
-            <div class="col-6">
-              <small class="text-muted">TC No:</small>
-              <p class="fw-bold mb-0" id="existingPersonTC">-</p>
-            </div>
+
             <div class="col-6">
               <small class="text-muted">Cinsiyet:</small>
               <p class="mb-0" id="existingPersonGender">-</p>

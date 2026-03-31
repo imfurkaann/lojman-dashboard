@@ -4,6 +4,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { db, logActivity, updateRoomStatus, syncRoomKeyStock, recordRoomEntry, recordRoomExit } = require('../database');
+const { encryptTcNumber, verifyTcNumber, blurTcNumber } = require('../middleware/tc-encryption');
 
 const INVENTORY_ISSUE_TAGS = ['eksik', 'arizali', 'kirik', 'calismiyor', 'kayip', 'diger'];
 const MIN_ROOM_KEY_COUNT = 0;
@@ -51,6 +52,75 @@ function getRoomInventoryItemNames(roomId) {
 const uploadDir = path.join(__dirname, '..', 'public', 'uploads', 'personnel');
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+function normalizePhotoPath(photoPath) {
+  const rawPath = String(photoPath || '').trim();
+  if (!rawPath) return null;
+
+  const normalizedSeparators = rawPath.replace(/\\/g, '/');
+  const lowerValue = normalizedSeparators.toLowerCase();
+
+  const uploadsWithLeadingSlashIndex = lowerValue.indexOf('/uploads/');
+  if (uploadsWithLeadingSlashIndex >= 0) {
+    return normalizedSeparators.slice(uploadsWithLeadingSlashIndex);
+  }
+
+  const uploadsIndex = lowerValue.indexOf('uploads/');
+  if (uploadsIndex >= 0) {
+    return `/${normalizedSeparators.slice(uploadsIndex)}`;
+  }
+
+  const publicIndex = lowerValue.indexOf('public/');
+  if (publicIndex >= 0) {
+    const afterPublic = normalizedSeparators.slice(publicIndex + 'public/'.length);
+    return afterPublic.startsWith('/') ? afterPublic : `/${afterPublic}`;
+  }
+
+  const fileName = path.basename(normalizedSeparators);
+  if (!fileName || fileName === '.' || fileName === '/') {
+    return null;
+  }
+
+  return `/uploads/personnel/${fileName}`;
+}
+
+function getPhotoFileSystemPath(photoPath) {
+  const normalizedPath = normalizePhotoPath(photoPath);
+  if (!normalizedPath) return null;
+  const relativePath = normalizedPath.replace(/^\/+/, '');
+  return path.join(__dirname, '..', 'public', relativePath);
+}
+
+function saveCapturedPhotoData(dataUrl) {
+  const raw = String(dataUrl || '').trim();
+  if (!raw) return null;
+
+  const match = raw.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+  if (!match) return null;
+
+  const mimeType = String(match[1] || '').toLowerCase();
+  const payload = match[2] || '';
+  const extByMime = {
+    'image/jpeg': '.jpg',
+    'image/jpg': '.jpg',
+    'image/png': '.png',
+    'image/gif': '.gif',
+    'image/webp': '.webp'
+  };
+
+  const ext = extByMime[mimeType] || null;
+  if (!ext) return null;
+
+  try {
+    const fileName = `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
+    const targetPath = path.join(uploadDir, fileName);
+    const fileBuffer = Buffer.from(payload, 'base64');
+    fs.writeFileSync(targetPath, fileBuffer);
+    return `/uploads/personnel/${fileName}`;
+  } catch (_) {
+    return null;
+  }
 }
 
 function decrementRoomKeyStock(roomId) {
@@ -166,7 +236,13 @@ function isRoomAtCapacity(roomId, excludePersonnelId = null) {
 
 
 const storage = multer.diskStorage({
-  destination: uploadDir,
+  destination: (req, file, cb) => {
+    // Klasör yoksa oluştur
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
     cb(null, uniqueSuffix + path.extname(file.originalname));
@@ -191,6 +267,12 @@ router.get('/', (req, res) => {
   const search = req.query.search || '';
   const department = req.query.department || '';
   const status = req.query.status || '';
+  const createdAtFrom = req.query.created_at_from || '';
+  const createdAtTo = req.query.created_at_to || '';
+  const checkInFrom = req.query.check_in_from || '';
+  const checkInTo = req.query.check_in_to || '';
+  const checkOutFrom = req.query.check_out_from || '';
+  const checkOutTo = req.query.check_out_to || '';
   const errorMessage = req.query.error || '';
   
   let query = `SELECT p.*, r.room_number FROM personnel p 
@@ -208,6 +290,30 @@ router.get('/', (req, res) => {
   if (status === 'aktif' || status === 'cikis_yapti' || status === 'bosta') {
     query += ' AND p.status = ?';
     params.push(status);
+  }
+  if (createdAtFrom) {
+    query += ' AND DATE(p.created_at) >= DATE(?)';
+    params.push(createdAtFrom);
+  }
+  if (createdAtTo) {
+    query += ' AND DATE(p.created_at) <= DATE(?)';
+    params.push(createdAtTo);
+  }
+  if (checkInFrom) {
+    query += ' AND p.check_in_date IS NOT NULL AND DATE(p.check_in_date) >= DATE(?)';
+    params.push(checkInFrom);
+  }
+  if (checkInTo) {
+    query += ' AND p.check_in_date IS NOT NULL AND DATE(p.check_in_date) <= DATE(?)';
+    params.push(checkInTo);
+  }
+  if (checkOutFrom) {
+    query += ' AND p.check_out_date IS NOT NULL AND DATE(p.check_out_date) >= DATE(?)';
+    params.push(checkOutFrom);
+  }
+  if (checkOutTo) {
+    query += ' AND p.check_out_date IS NOT NULL AND DATE(p.check_out_date) <= DATE(?)';
+    params.push(checkOutTo);
   }
   query += ' ORDER BY p.first_name, p.last_name';
 
@@ -280,6 +386,12 @@ router.get('/', (req, res) => {
     search,
     department,
     statusFilter: status,
+    createdAtFrom,
+    createdAtTo,
+    checkInFrom,
+    checkInTo,
+    checkOutFrom,
+    checkOutTo,
     errorMessage
   });
 });
@@ -375,11 +487,13 @@ router.post('/ekle', (req, res, next) => {
 });
 
 // Personel ekle
-router.post('/ekle', (req, res) => {
+router.post('/ekle', async (req, res) => {
   try {
     const { first_name, last_name, gender, phone, department, room_id, handover_payload, key_delivered, tc_number, form_signed, action } = req.body;
     const normalizedTc = (tc_number || '').trim();
-    const photoPath = req.file ? `/uploads/personnel/${req.file.filename}` : null;
+    const uploadedPhotoPath = req.file ? `/uploads/personnel/${req.file.filename}` : null;
+    const capturedPhotoPath = uploadedPhotoPath ? null : saveCapturedPhotoData(req.body.captured_photo_data);
+    const photoPath = uploadedPhotoPath || capturedPhotoPath;
     const isFormSigned = form_signed === 'on' ? 1 : 0;
     const rawUserId = req.session && req.session.user ? req.session.user.id : null;
     const actorUser = rawUserId ? db.prepare('SELECT id FROM users WHERE id = ?').get(rawUserId) : null;
@@ -397,17 +511,38 @@ router.post('/ekle', (req, res) => {
       return res.status(400).send('TC kimlik no zorunludur.');
     }
 
-  // TC numarası kontrolü (tum personellerde)
+    // TC numarasını şifrele
+    let encryptedTc;
+    try {
+      encryptedTc = await encryptTcNumber(normalizedTc);
+    } catch (error) {
+      console.error('TC şifreleme hatası:', error);
+      if (req.file) {
+        fs.unlink(path.join(uploadDir, req.file.filename), () => {});
+      }
+      if (wantsJson) {
+        return res.status(500).json({ error: 'Sistem hatası' });
+      }
+      return res.status(500).send('TC kaydı sırasında hata oluştu.');
+    }
+
+  // TC numarası kontrolü - tüm personelleri getir ve şifreli TC ile eşleştir
+    const allPersonnelWithTc = db.prepare('SELECT id, tc_number_encrypted FROM personnel WHERE tc_number_encrypted IS NOT NULL').all();
     let existingPerson = null;
-    existingPerson = db.prepare('SELECT * FROM personnel WHERE tc_number = ?').get(normalizedTc);
+    
+    for (const person of allPersonnelWithTc) {
+      const isMatch = await verifyTcNumber(normalizedTc, person.tc_number_encrypted);
+      if (isMatch) {
+        existingPerson = db.prepare('SELECT * FROM personnel WHERE id = ?').get(person.id);
+        break;
+      }
+    }
 
   // Mevcut kimse varsa ve action belirtilmediyse, o kişinin bilgilerini gönder
     if (existingPerson && !action) {
     // Fotoğraf yüklendiyse ancak kayıt mevcut ise, yüklenen fotoğrafı sil
     if (req.file) {
-      const fs = require('fs');
-      const path = require('path');
-      fs.unlink(path.join(__dirname, '..', 'public', photoPath), () => {});
+      fs.unlink(path.join(uploadDir, req.file.filename), () => {});
     }
       return res.json({ duplicate: true, existingPerson, message: 'Bu kişi zaten sistemde kayıtlıdır.' });
     }
@@ -431,15 +566,18 @@ router.post('/ekle', (req, res) => {
     const nextStatus = nextRoomId ? 'aktif' : 'bosta';
     const nextCheckInDate = nextRoomId ? new Date().toISOString() : null;
     const roomChangeAt = new Date().toISOString();
-    db.prepare('UPDATE personnel SET first_name = ?, last_name = ?, gender = ?, phone = ?, department = ?, room_id = ?, status = ?, check_in_date = ?, photo_path = ?, form_signed = ?, entry_handover_payload = ?, key_delivered = ? WHERE id = ?').run(
+    const tcLastFour = normalizedTc.slice(-4);
+    db.prepare('UPDATE personnel SET first_name = ?, last_name = ?, gender = ?, phone = ?, department = ?, room_id = ?, status = ?, check_in_date = ?, photo_path = ?, form_signed = ?, entry_handover_payload = ?, key_delivered = ?, tc_number_encrypted = ?, tc_last_four = ? WHERE id = ?').run(
       first_name, last_name, gender, phone || null, department || null,
       nextRoomId,
       nextStatus,
       nextCheckInDate,
-      photoPath || existingPerson.photo_path,
+      photoPath || normalizePhotoPath(existingPerson.photo_path),
       isFormSigned,
       handover_payload || null,
       key_delivered === '1' ? 1 : 0,
+      encryptedTc,
+      tcLastFour,
       existingPerson.id
     );
       if (previousRoomId && previousRoomId !== nextRoomId) {
@@ -449,7 +587,7 @@ router.post('/ekle', (req, res) => {
         recordRoomEntry(existingPerson.id, nextRoomId, nextCheckInDate || roomChangeAt);
       }
       [previousRoomId, nextRoomId].filter(Boolean).forEach(syncRoomKeyStock);
-      logActivity('personel_guncellendi', `${first_name} ${last_name} (TC: ${tc_number}) verilerine dayalı güncellendi`, `Departman: ${department || '-'}`, safeUserId);
+      logActivity('personel_guncellendi', `${first_name} ${last_name} verilerine dayalı güncellendi`, `Departman: ${department || '-'}`, safeUserId);
       if (wantsJson) return res.json({ ok: true, redirect: '/personel', updated: true });
       return res.redirect('/personel');
     }
@@ -470,11 +608,13 @@ router.post('/ekle', (req, res) => {
     }
     const nextStatus = parsedRoomId ? 'aktif' : 'bosta';
     const checkInDate = parsedRoomId ? new Date().toISOString() : null;
-    const result = db.prepare('INSERT INTO personnel (first_name, last_name, gender, phone, department, room_id, status, tc_number, photo_path, form_signed, entry_handover_payload, key_delivered, check_in_date, added_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
+    const tcLastFour = normalizedTc.slice(-4);
+    const result = db.prepare('INSERT INTO personnel (first_name, last_name, gender, phone, department, room_id, status, tc_number_encrypted, tc_last_four, photo_path, form_signed, entry_handover_payload, key_delivered, check_in_date, added_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
       first_name, last_name, gender, phone || null, department || null,
       parsedRoomId,
       nextStatus,
-      normalizedTc,
+      encryptedTc,
+      tcLastFour,
       photoPath,
       isFormSigned,
       handover_payload || null,
@@ -507,10 +647,6 @@ router.post('/ekle', (req, res) => {
     const room = db.prepare('SELECT room_number FROM rooms WHERE id = ?').get(parseInt(room_id));
     logActivity('personel_yerlesti', `${first_name} ${last_name} - ${room ? room.room_number : ''} numaralı odaya yerleştirildi`, `Departman: ${department || '-'}`, safeUserId);
     } else {
-      if (req.file) {
-        // Eğer oda seçilmezse fotoğrafı sil
-        fs.unlink(path.join(uploadDir, req.file.filename), () => {});
-      }
       logActivity('personel_eklendi', `${first_name} ${last_name} eklendi (oda atanmadı)`, null, safeUserId);
     }
 
@@ -540,10 +676,12 @@ router.post('/ekle-ve-ata', (req, res, next) => {
   });
 });
 
-router.post('/ekle-ve-ata', (req, res) => {
+router.post('/ekle-ve-ata', async (req, res) => {
   const { first_name, last_name, gender, phone, department, tc_number, room_id, handover_payload } = req.body;
   const normalizedTc = (tc_number || '').trim();
-  const photoPath = req.file ? `/uploads/personnel/${req.file.filename}` : null;
+  const uploadedPhotoPath = req.file ? `/uploads/personnel/${req.file.filename}` : null;
+  const capturedPhotoPath = uploadedPhotoPath ? null : saveCapturedPhotoData(req.body.captured_photo_data);
+  const photoPath = uploadedPhotoPath || capturedPhotoPath;
   const rawUserId = req.session && req.session.user ? req.session.user.id : null;
   const actorUser = rawUserId ? db.prepare('SELECT id FROM users WHERE id = ?').get(rawUserId) : null;
   const safeUserId = actorUser ? actorUser.id : null;
@@ -557,7 +695,27 @@ router.post('/ekle-ve-ata', (req, res) => {
     return res.redirect(`/odalar/${parsedRoomId}?error=` + encodeURIComponent('TC kimlik no zorunludur.'));
   }
 
-  const existingPerson = db.prepare('SELECT id FROM personnel WHERE tc_number = ?').get(normalizedTc);
+  // TC numarasını şifrele
+  let encryptedTc;
+  try {
+    encryptedTc = await encryptTcNumber(normalizedTc);
+  } catch (error) {
+    console.error('TC şifreleme hatası:', error);
+    return res.redirect(`/odalar/${parsedRoomId}?error=` + encodeURIComponent('Sistem hatası'));
+  }
+
+  // TC duplicate kontrolü - şifreli versiyonlarla karşılaştır
+  const allPersonnelWithTc = db.prepare('SELECT id, tc_number_encrypted FROM personnel WHERE tc_number_encrypted IS NOT NULL').all();
+  let existingPerson = null;
+  
+  for (const person of allPersonnelWithTc) {
+    const isMatch = await verifyTcNumber(normalizedTc, person.tc_number_encrypted);
+    if (isMatch) {
+      existingPerson = person;
+      break;
+    }
+  }
+
   if (existingPerson) {
     return res.redirect(`/odalar/${parsedRoomId}?error=` + encodeURIComponent('Bu kişi zaten sistemde kayıtlıdır.'));
   }
@@ -584,9 +742,10 @@ router.post('/ekle-ve-ata', (req, res) => {
 
     // 1. Personeli oluştur
     const checkInAt = new Date().toISOString();
+    const tcLastFour = normalizedTc.slice(-4);
     const insertPersonnelResult = db.prepare(
-      'INSERT INTO personnel (first_name, last_name, gender, phone, department, tc_number, photo_path, room_id, entry_handover_payload, key_delivered, status, check_in_date, added_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-    ).run(first_name, last_name, gender, phone, department, normalizedTc, photoPath, parsedRoomId, handover_payload || null, keyDeliveredValue, 'aktif', checkInAt, safeUserId);
+      'INSERT INTO personnel (first_name, last_name, gender, phone, department, tc_number_encrypted, tc_last_four, photo_path, room_id, entry_handover_payload, key_delivered, status, check_in_date, added_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(first_name, last_name, gender, phone, department, encryptedTc, tcLastFour, photoPath, parsedRoomId, handover_payload || null, keyDeliveredValue, 'aktif', checkInAt, safeUserId);
     
     const personnelId = insertPersonnelResult.lastInsertRowid;
     recordRoomEntry(personnelId, parsedRoomId, checkInAt);
@@ -653,6 +812,8 @@ router.post('/ekle-ve-ata', (req, res) => {
 router.get('/:id', (req, res) => {
   const person = db.prepare('SELECT p.*, r.room_number FROM personnel p LEFT JOIN rooms r ON p.room_id = r.id WHERE p.id = ?').get(req.params.id);
   if (!person) return res.redirect('/personel');
+
+  person.photo_path = normalizePhotoPath(person.photo_path);
 
   const complaints = db.prepare('SELECT pc.*, u.full_name as recorder FROM personnel_complaints pc LEFT JOIN users u ON pc.recorded_by = u.id WHERE pc.personnel_id = ? ORDER BY pc.created_at DESC').all(person.id);
   const rooms = db.prepare("SELECT id, room_number, capacity, (SELECT COUNT(*) FROM personnel pp WHERE pp.room_id = rooms.id AND pp.status = 'aktif') as occupant_count FROM rooms WHERE status NOT IN ('bakimda', 'depo') ORDER BY room_number").all();
@@ -789,7 +950,7 @@ router.get('/:id', (req, res) => {
 });
 
 // Personel güncelle
-router.post('/:id/guncelle', upload.single('photo'), (req, res) => {
+router.post('/:id/guncelle', upload.single('photo'), async (req, res) => {
   const {
     first_name,
     last_name,
@@ -801,23 +962,51 @@ router.post('/:id/guncelle', upload.single('photo'), (req, res) => {
     key_delivered
   } = req.body;
 
-  const person = db.prepare('SELECT id, photo_path, room_id, key_delivered FROM personnel WHERE id = ?').get(req.params.id);
+  const person = db.prepare('SELECT id, photo_path, room_id, key_delivered, tc_number_encrypted, tc_last_four FROM personnel WHERE id = ?').get(req.params.id);
   if (!person) return res.redirect('/personel');
 
   const normalizedTc = (tc_number || '').trim();
-  if (!normalizedTc) {
-    if (req.file) {
-      fs.unlink(path.join(uploadDir, req.file.filename), () => {});
-    }
-    return res.status(400).send('TC kimlik no zorunludur.');
-  }
+  let encryptedTc = person.tc_number_encrypted || null;
+  let tcLastFour = person.tc_last_four || null;
 
-  const duplicatePerson = db.prepare('SELECT id FROM personnel WHERE tc_number = ? AND id != ?').get(normalizedTc, req.params.id);
-  if (duplicatePerson) {
-    if (req.file) {
-      fs.unlink(path.join(uploadDir, req.file.filename), () => {});
+  if (normalizedTc) {
+    if (!/^\d{11}$/.test(normalizedTc)) {
+      if (req.file) {
+        fs.unlink(path.join(uploadDir, req.file.filename), () => {});
+      }
+      return res.status(400).send('TC kimlik no 11 haneli olmalıdır.');
     }
-    return res.status(400).send('Bu kişi zaten sistemde kayıtlıdır.');
+
+    // TC numarasını şifrele
+    try {
+      encryptedTc = await encryptTcNumber(normalizedTc);
+      tcLastFour = normalizedTc.slice(-4);
+    } catch (error) {
+      console.error('TC şifreleme hatası:', error);
+      if (req.file) {
+        fs.unlink(path.join(uploadDir, req.file.filename), () => {});
+      }
+      return res.status(500).send('TC kaydı sırasında hata oluştu.');
+    }
+
+    // TC duplicate kontrolü - diğer personelleri kontrol et (şu anki kişi hariç)
+    const otherPersonnelWithTc = db.prepare('SELECT id, tc_number_encrypted FROM personnel WHERE id != ? AND tc_number_encrypted IS NOT NULL').all(req.params.id);
+    let duplicateFound = false;
+
+    for (const otherPerson of otherPersonnelWithTc) {
+      const isMatch = await verifyTcNumber(normalizedTc, otherPerson.tc_number_encrypted);
+      if (isMatch) {
+        duplicateFound = true;
+        break;
+      }
+    }
+
+    if (duplicateFound) {
+      if (req.file) {
+        fs.unlink(path.join(uploadDir, req.file.filename), () => {});
+      }
+      return res.status(400).send('Bu TC numarası başka bir personele aittir.');
+    }
   }
 
   const rawUserId = req.session && req.session.user ? req.session.user.id : null;
@@ -827,31 +1016,36 @@ router.post('/:id/guncelle', upload.single('photo'), (req, res) => {
   const isFormSigned = form_signed === 'on' ? 1 : 0;
   const isKeyDelivered = key_delivered === '1' ? 1 : 0;
 
-  const photoPath = req.file ? `/uploads/personnel/${req.file.filename}` : null;
+  const uploadedPhotoPath = req.file ? `/uploads/personnel/${req.file.filename}` : null;
+  const capturedPhotoPath = uploadedPhotoPath ? null : saveCapturedPhotoData(req.body.captured_photo_data);
+  const photoPath = uploadedPhotoPath || capturedPhotoPath;
+  const existingPhotoPath = normalizePhotoPath(person.photo_path);
 
   // Eğer yeni fotoğraf yüklendiyse, eskisini diskten sil
-  if (photoPath && person.photo_path) {
+  if (photoPath && existingPhotoPath) {
     try {
-      const oldPhotoFsPath = path.join(__dirname, '..', 'public', person.photo_path);
-      if (fs.existsSync(oldPhotoFsPath)) {
+      const oldPhotoFsPath = getPhotoFileSystemPath(existingPhotoPath);
+      if (oldPhotoFsPath && fs.existsSync(oldPhotoFsPath)) {
         fs.unlink(oldPhotoFsPath, () => {});
       }
     } catch (_) {}
   }
 
   const updateTx = db.transaction(() => {
+    const finalPhotoPath = photoPath || existingPhotoPath;
     db.prepare(
-      'UPDATE personnel SET first_name = ?, last_name = ?, gender = ?, phone = ?, department = ?, tc_number = ?, form_signed = ?, key_delivered = ?, photo_path = COALESCE(?, photo_path) WHERE id = ?'
+      'UPDATE personnel SET first_name = ?, last_name = ?, gender = ?, phone = ?, department = ?, tc_number_encrypted = ?, tc_last_four = ?, form_signed = ?, key_delivered = ?, photo_path = ? WHERE id = ?'
     ).run(
       first_name,
       last_name,
       gender,
       phone || null,
       department || null,
-      normalizedTc,
+      encryptedTc,
+      tcLastFour,
       isFormSigned,
       isKeyDelivered,
-      photoPath,
+      finalPhotoPath,
       req.params.id
     );
 
@@ -1185,14 +1379,15 @@ router.post('/:id/sil', (req, res) => {
       db.prepare('DELETE FROM inventory_mutations WHERE personnel_id = ?').run(id);
       db.prepare('DELETE FROM handover_forms WHERE personnel_id = ?').run(id);
       db.prepare('DELETE FROM personnel_inventory WHERE personnel_id = ?').run(id);
+      db.prepare('DELETE FROM room_stay_history WHERE personnel_id = ?').run(id);
       db.prepare('DELETE FROM personnel WHERE id = ?').run(id);
     });
 
     deletePersonnelTx(personelId);
 
     if (person.photo_path) {
-      const photoPath = path.join(__dirname, '..', 'public', person.photo_path);
-      if (fs.existsSync(photoPath)) {
+      const photoPath = getPhotoFileSystemPath(person.photo_path);
+      if (photoPath && fs.existsSync(photoPath)) {
         fs.unlink(photoPath, (err) => {
           if (err) console.error('Fotoğraf silme hatası:', err);
         });

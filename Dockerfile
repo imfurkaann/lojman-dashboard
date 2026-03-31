@@ -15,7 +15,7 @@ FROM node:22-alpine
 WORKDIR /app
 
 # Runtime dependencies only
-RUN apk add --no-cache curl
+RUN apk add --no-cache curl sqlite
 
 COPY --from=builder /app/node_modules ./node_modules
 COPY package*.json ./
@@ -25,7 +25,7 @@ ENV NODE_ENV=production
 ENV PORT=3000
 ENV DB_PATH=/data/lojman.db
 
-RUN mkdir -p /data /app/public/uploads
+RUN mkdir -p /data /app/public/uploads/personnel
 
 EXPOSE 3000
 

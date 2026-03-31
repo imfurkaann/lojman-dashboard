@@ -1,6 +1,7 @@
 const Database = require('better-sqlite3');
 const path = require('path');
 const bcrypt = require('bcryptjs');
+const { encryptTcNumber } = require('./middleware/tc-encryption');
 
 const dbPath = process.env.DB_PATH
   ? path.resolve(process.env.DB_PATH)
@@ -390,6 +391,7 @@ function runMigrations() {
   // Personnel tablosuna TC kimlik, fotoğraf ve form_signed alanları ekle
   const personnelColumns = db.prepare('PRAGMA table_info(personnel)').all();
   const hasTcNumber = personnelColumns.some(col => col.name === 'tc_number');
+  const hasTcNumberEncrypted = personnelColumns.some(col => col.name === 'tc_number_encrypted');
   const hasPhotoPath = personnelColumns.some(col => col.name === 'photo_path');
   const hasFormSigned = personnelColumns.some(col => col.name === 'form_signed');
   const hasHandoverPayload = personnelColumns.some(col => col.name === 'handover_payload');
@@ -399,9 +401,25 @@ function runMigrations() {
   const hasCheckoutKeyReturned = personnelColumns.some(col => col.name === 'checkout_key_returned');
   const hasCheckoutRoomId = personnelColumns.some(col => col.name === 'checkout_room_id');
 
-  if (!hasTcNumber) {
-    db.exec('ALTER TABLE personnel ADD COLUMN tc_number TEXT');
-    console.log('Migration: personnel tablosuna tc_number alanı eklendi');
+  if (!hasTcNumberEncrypted) {
+    db.exec('ALTER TABLE personnel ADD COLUMN tc_number_encrypted TEXT');
+    console.log('Migration: personnel tablosuna tc_number_encrypted alanı eklendi');
+    
+    // Eski TC numaralarını şifrele
+    const oldPersonnel = db.prepare('SELECT id, tc_number FROM personnel WHERE tc_number IS NOT NULL AND tc_number != "" AND tc_number_encrypted IS NULL').all();
+    if (oldPersonnel.length > 0) {
+      const updateStmt = db.prepare('UPDATE personnel SET tc_number_encrypted = ? WHERE id = ?');
+      for (const person of oldPersonnel) {
+        try {
+          const encrypted = encryptTcNumber(person.tc_number);
+          updateStmt.run(encrypted, person.id);
+          console.log(`  ✓ Personel ${person.id}: TC şifrelendi`);
+        } catch (err) {
+          console.error(`  ✗ Personel ${person.id}: TC şifreleme başarısız`, err.message);
+        }
+      }
+      console.log(`Migration: ${oldPersonnel.length} eski TC kaydı şifrelendi`);
+    }
   }
   if (!hasPhotoPath) {
     db.exec('ALTER TABLE personnel ADD COLUMN photo_path TEXT');
@@ -442,6 +460,12 @@ function runMigrations() {
     console.log('Migration: personnel tablosuna checkout_room_id alanı eklendi');
   }
 
+  const hasTcLastFour = personnelColumns.some(col => col.name === 'tc_last_four');
+  if (!hasTcLastFour) {
+    db.exec('ALTER TABLE personnel ADD COLUMN tc_last_four TEXT');
+    console.log('Migration: personnel tablosuna tc_last_four alanı eklendi');
+  }
+
   const personnelTableSql = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='personnel'").get();
   if (personnelTableSql && !personnelTableSql.sql.includes("'bosta'")) {
     db.exec(`
@@ -473,13 +497,13 @@ function runMigrations() {
 
       INSERT INTO personnel_new (
         id, first_name, last_name, gender, phone, department, room_id, status,
-        check_in_date, check_out_date, added_by, created_at, tc_number, photo_path,
+        check_in_date, check_out_date, added_by, created_at, tc_number_encrypted, photo_path,
         form_signed, handover_payload, entry_handover_payload, checkout_handover_payload,
         key_delivered, checkout_key_returned, checkout_room_id
       )
       SELECT
         id, first_name, last_name, gender, phone, department, room_id, status,
-        check_in_date, check_out_date, added_by, created_at, tc_number, photo_path,
+        check_in_date, check_out_date, added_by, created_at, tc_number_encrypted, photo_path,
         form_signed, handover_payload, entry_handover_payload, checkout_handover_payload,
         key_delivered, checkout_key_returned, checkout_room_id
       FROM personnel;
@@ -667,7 +691,7 @@ function syncRoomKeyStock(roomId) {
 
 function getPersonnelHistorySnapshot(personnelId) {
   if (!personnelId) return null;
-  return db.prepare('SELECT id, first_name, last_name, tc_number, department FROM personnel WHERE id = ?').get(personnelId) || null;
+  return db.prepare('SELECT id, first_name, last_name, department FROM personnel WHERE id = ?').get(personnelId) || null;
 }
 
 function recordRoomEntry(personnelId, roomId, entryAt) {

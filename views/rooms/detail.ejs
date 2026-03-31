@@ -155,7 +155,6 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
                 <thead class="table-light">
                   <tr>
                     <th>Ad Soyad</th>
-                    <th>TC Kimlik</th>
                     <th>Cinsiyet</th>
                     <th>Departman</th>
                     <th>İlk Kayıt</th>
@@ -170,7 +169,6 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
                         data-phone="<%= p.phone || '' %>" 
                         data-department="<%= p.department || '' %>">
                       <td><strong><%= p.first_name %> <%= p.last_name %></strong></td>
-                      <td><%= p.tc_number || '-' %></td>
                       <td><%= p.gender === 'erkek' ? 'Erkek' : (p.gender === 'kadin' ? 'Kadın' : '-') %></td>
                       <td><%= p.department || '-' %></td>
                       <td><%= p.created_at ? new Date(p.created_at).toLocaleDateString('tr-TR') : '-' %></td>
@@ -421,12 +419,30 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
       <div class="text-center text-muted py-4">Bu oda için giriş/çıkış geçmişi bulunamadı</div>
     <% } else { %>
       <div class="row g-2 mb-3">
-        <div class="col-md-6 col-lg-5">
+        <div class="col-md-4 col-lg-4">
           <input
             type="text"
             class="form-control form-control-sm"
             id="historySearchInput"
             placeholder="İsim, TC veya departman ara..."
+          >
+        </div>
+        <div class="col-md-4 col-lg-4">
+          <input
+            type="text"
+            class="form-control form-control-sm"
+            id="historyEntryRange"
+            placeholder="Giriş tarihi aralığı"
+            autocomplete="off"
+          >
+        </div>
+        <div class="col-md-4 col-lg-4">
+          <input
+            type="text"
+            class="form-control form-control-sm"
+            id="historyExitRange"
+            placeholder="Çıkış tarihi aralığı"
+            autocomplete="off"
           >
         </div>
       </div>
@@ -435,7 +451,6 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
           <thead class="table-light">
             <tr>
               <th>İsim Soyisim</th>
-              <th>TC Kimlik</th>
               <th>Departman</th>
               <th>Giriş Tarihi</th>
               <th>Çıkış Tarihi</th>
@@ -447,10 +462,11 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
               <% const personName = `${h.first_name || '-'} ${h.last_name || ''}`.trim(); %>
               <% const entryText = h.entry_at ? new Date(h.entry_at).toLocaleString('tr-TR') : '-'; %>
               <% const exitText = h.exit_at ? new Date(h.exit_at).toLocaleString('tr-TR') : '-'; %>
-              <% const filterText = `${personName} ${h.tc_number || ''} ${h.department || ''} ${entryText} ${exitText}`.toLowerCase(); %>
-              <tr>
+              <% const entryDateValue = h.entry_at ? new Date(h.entry_at).toISOString().slice(0, 10) : ''; %>
+              <% const exitDateValue = h.exit_at ? new Date(h.exit_at).toISOString().slice(0, 10) : ''; %>
+              <% const filterText = `${personName} ${h.department || ''} ${entryText} ${exitText}`.toLowerCase(); %>
+              <tr data-entry-date="<%= entryDateValue %>" data-exit-date="<%= exitDateValue %>">
                 <td data-history-filter="<%= filterText %>"><strong><%= personName || '-' %></strong></td>
-                <td><%= h.tc_number || '-' %></td>
                 <td><%= h.department || '-' %></td>
                 <td><%= entryText %></td>
                 <td><%= exitText %></td>
@@ -564,7 +580,7 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
             </div>
             <div class="col-md-6 mb-3">
               <label class="form-label">TC Kimlik No *</label>
-              <input type="text" class="form-control" name="tc_number" required>
+              <input type="text" class="form-control" name="tc_number" placeholder="11 haneli TC no" required maxlength="11" pattern="[0-9]{11}">
             </div>
           </div>
           <div class="mb-3">
@@ -1016,6 +1032,10 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
 
 <%- include('../footer') %>
 
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/tr.js"></script>
+
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     const roomTabStorageKey = `room-detail-active-tab-<%= room.id %>`;
@@ -1071,17 +1091,69 @@ document.addEventListener('DOMContentLoaded', function () {
     const inventoryIssuesData = <%- JSON.stringify(inventoryIssues || []) %>;
 
     const historySearchInput = document.getElementById('historySearchInput');
+    const historyEntryRange = document.getElementById('historyEntryRange');
+    const historyExitRange = document.getElementById('historyExitRange');
     const historyTableBody = document.getElementById('historyTableBody');
     if (historySearchInput && historyTableBody) {
       const historyRows = Array.from(historyTableBody.querySelectorAll('tr'));
 
-      historySearchInput.addEventListener('input', () => {
+      let entryRangeFrom = '';
+      let entryRangeTo = '';
+      let exitRangeFrom = '';
+      let exitRangeTo = '';
+
+      function setupHistoryRangePicker(inputEl, onChange) {
+        if (!inputEl || typeof flatpickr === 'undefined') return null;
+
+        return flatpickr(inputEl, {
+          mode: 'range',
+          dateFormat: 'Y-m-d',
+          locale: (flatpickr && flatpickr.l10ns && flatpickr.l10ns.tr) ? flatpickr.l10ns.tr : 'tr',
+          onChange: (selectedDates) => {
+            const from = selectedDates[0] ? flatpickr.formatDate(selectedDates[0], 'Y-m-d') : '';
+            const to = selectedDates[1] ? flatpickr.formatDate(selectedDates[1], 'Y-m-d') : '';
+            onChange(from, to || from);
+          }
+        });
+      }
+
+      function isDateInRange(value, from, to) {
+        if (!from && !to) return true;
+        if (!value) return false;
+        if (from && value < from) return false;
+        if (to && value > to) return false;
+        return true;
+      }
+
+      function filterHistoryRows() {
         const query = historySearchInput.value.trim().toLowerCase();
+
         historyRows.forEach(row => {
           const filterCell = row.querySelector('[data-history-filter]');
           const text = filterCell ? (filterCell.getAttribute('data-history-filter') || '') : '';
-          row.style.display = !query || text.includes(query) ? '' : 'none';
+          const entryDate = row.getAttribute('data-entry-date') || '';
+          const exitDate = row.getAttribute('data-exit-date') || '';
+
+          const matchesSearch = !query || text.includes(query);
+          const matchesEntryRange = isDateInRange(entryDate, entryRangeFrom, entryRangeTo);
+          const matchesExitRange = isDateInRange(exitDate, exitRangeFrom, exitRangeTo);
+
+          row.style.display = matchesSearch && matchesEntryRange && matchesExitRange ? '' : 'none';
         });
+      }
+
+      historySearchInput.addEventListener('input', filterHistoryRows);
+
+      setupHistoryRangePicker(historyEntryRange, (from, to) => {
+        entryRangeFrom = from;
+        entryRangeTo = to;
+        filterHistoryRows();
+      });
+
+      setupHistoryRangePicker(historyExitRange, (from, to) => {
+        exitRangeFrom = from;
+        exitRangeTo = to;
+        filterHistoryRows();
       });
     }
     const validIssueTags = ['eksik', 'arizali', 'kirik', 'calismiyor', 'kayip', 'diger'];

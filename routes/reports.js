@@ -259,6 +259,53 @@ router.get('/anahtar-eksikleri', (req, res) => {
   res.render('reports', { title: 'Anahtar Eksik Raporu', mode: 'key-shortage', shortages });
 });
 
+function getCurrentOccupancyReportData() {
+  const rows = db.prepare(`
+    SELECT
+      r.id AS room_id,
+      r.room_number,
+      p.id AS personnel_id,
+      p.first_name,
+      p.last_name,
+      p.department
+    FROM personnel p
+    INNER JOIN rooms r ON r.id = p.room_id
+    WHERE COALESCE(p.status, '') = 'aktif'
+      AND p.room_id IS NOT NULL
+      AND COALESCE(r.status, '') != 'depo'
+    ORDER BY CAST(r.room_number AS INTEGER), r.room_number, p.first_name, p.last_name
+  `).all();
+
+  const byRoom = new Map();
+  rows.forEach(row => {
+    if (!byRoom.has(row.room_id)) {
+      byRoom.set(row.room_id, {
+        room_id: row.room_id,
+        room_number: row.room_number,
+        occupants: []
+      });
+    }
+
+    byRoom.get(row.room_id).occupants.push({
+      personnel_id: row.personnel_id,
+      full_name: `${row.first_name || ''} ${row.last_name || ''}`.trim(),
+      department: row.department || '-'
+    });
+  });
+
+  return Array.from(byRoom.values());
+}
+
+router.get('/anlik-konaklayanlar', (req, res) => {
+  const occupancyRows = getCurrentOccupancyReportData();
+
+  res.render('reports', {
+    title: 'Anlık Konaklayanlar Raporu',
+    mode: 'current-occupancy',
+    occupancyRows
+  });
+});
+
 router.get('/oda-sorunlari', (req, res) => {
   const { roomIssueRows, inventoryColumns } = buildRoomIssuesReportData();
 
@@ -329,6 +376,45 @@ router.get('/anahtar-eksikleri/excel', async (req, res, next) => {
     const stamp = new Date().toISOString().slice(0, 10);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="anahtar-eksik-raporu-${stamp}.xlsx"`);
+
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/anlik-konaklayanlar/excel', async (req, res, next) => {
+  try {
+    const occupancyRows = getCurrentOccupancyReportData();
+
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Anlık Konaklayanlar');
+
+    sheet.columns = [
+      { header: 'Oda Numarası', key: 'room_number', width: 14 },
+      { header: 'Konaklayan Personeller', key: 'occupants', width: 60 }
+    ];
+
+    sheet.getRow(1).font = { bold: true };
+    sheet.getRow(1).alignment = { vertical: 'middle' };
+
+    occupancyRows.forEach(room => {
+      const occupants = room.occupants
+        .map(person => `${person.full_name} (${person.department || '-'})`)
+        .join('\n');
+
+      const row = sheet.addRow({
+        room_number: room.room_number,
+        occupants: occupants || '-'
+      });
+
+      row.alignment = { wrapText: true, vertical: 'top' };
+    });
+
+    const stamp = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="anlik-konaklayanlar-raporu-${stamp}.xlsx"`);
 
     await workbook.xlsx.write(res);
     res.end();

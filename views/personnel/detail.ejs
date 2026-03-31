@@ -77,6 +77,10 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...(p
 <%
   const entryItems = entryHandoverItems || [];
   const checkoutItems = checkoutHandoverItems || [];
+  const registrationDateSource = person.created_at || person.check_in_date;
+  const registrationDate = registrationDateSource
+    ? new Date(registrationDateSource).toLocaleDateString('tr-TR')
+    : '-';
 %>
 
 <!-- Personel Tabs -->
@@ -116,7 +120,16 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...(p
         <table class="table table-borderless table-sm mb-0 person-info-table">
           <tr><td class="text-muted person-info-label">Ad Soyad</td><td><strong><%= person.first_name %> <%= person.last_name %></strong></td></tr>
           <tr><td class="text-muted person-info-label">Cinsiyet</td><td><%= person.gender === 'erkek' ? 'Erkek' : 'Kadın' %></td></tr>
-          <tr><td class="text-muted person-info-label">TC Kimlik No</td><td><%= person.tc_number || '-' %></td></tr>
+          <tr><td class="text-muted person-info-label">Sicil Numarası</td><td>
+            <% 
+              const tcDisplay = person.tc_last_four 
+                ? '*'.repeat(Math.max(0, 11 - 4)) + person.tc_last_four  // TC kimlik 11 haneli, son 4 hane + 7 adet ****
+                : '-';
+            %>
+            <span class="font-monospace" style="letter-spacing: 2px;">
+              <strong><%= tcDisplay %></strong>
+            </span>
+          </td></tr>
           <tr><td class="text-muted person-info-label">Telefon</td><td><%= person.phone || '-' %></td></tr>
           <tr><td class="text-muted person-info-label">Departman</td><td><%= person.department || '-' %></td></tr>
           <tr><td class="text-muted person-info-label">Oda</td><td>
@@ -135,6 +148,7 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...(p
               <span class="badge bg-secondary">Çıkış Yapmış</span>
             <% } %>
           </td></tr>
+          <tr><td class="text-muted person-info-label">Kayıt Tarihi</td><td><%= registrationDate %></td></tr>
           <tr><td class="text-muted person-info-label">Giriş Tarihi</td><td><%= person.check_in_date ? new Date(person.check_in_date).toLocaleDateString('tr-TR') : '-' %></td></tr>
           <% if (person.check_out_date) { %>
           <tr><td class="text-muted person-info-label">Çıkış Tarihi</td><td><%= new Date(person.check_out_date).toLocaleDateString('tr-TR') %></td></tr>
@@ -419,8 +433,9 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...(p
               </select>
             </div>
             <div class="col-6">
-              <label class="form-label">TC Kimlik Numarası</label>
-              <input type="text" class="form-control" name="tc_number" value="<%= person.tc_number || '' %>" placeholder="11 haneli TC no" required>
+              <label class="form-label">TC Kimlik No</label>
+              <input type="text" class="form-control" name="tc_number" value="" placeholder="Değiştirmek için yeni 11 haneli TC girin" maxlength="11" pattern="[0-9]{11}">
+              <small class="text-muted">Boş bırakırsanız mevcut TC değeri korunur<% if (person.tc_last_four) { %> (mevcut: ******<%= person.tc_last_four %>)<% } %>.</small>
             </div>
           </div>
 
@@ -442,8 +457,16 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...(p
 
           <div class="mb-3 mt-3">
             <label class="form-label">Fotoğraf</label>
+            
+            <% if (person.photo_path) { %>
+              <div class="text-center mb-3">
+                <img src="<%= person.photo_path %>" alt="Personel Fotoğraf" class="rounded" style="max-height: 200px; max-width: 100%; object-fit: cover;">
+                <p class="text-muted small mt-2">Mevcut Fotoğraf</p>
+              </div>
+            <% } %>
+            
             <button type="button" class="btn btn-outline-primary w-100" id="editAddPhotoBtn">
-              <i class="bi bi-camera"></i> Fotoğraf Ekle
+              <i class="bi bi-camera"></i> <%= person.photo_path ? 'Fotoğrafı Değiştir' : 'Fotoğraf Ekle' %>
             </button>
 
             <div id="editPhotoOptions" class="mt-2" style="display:none;">
@@ -471,6 +494,7 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...(p
                   <small class="text-muted d-block mt-2">İlk kullanımda kamera izni isteyebilir.</small>
                 </div>
                 <input type="hidden" name="captured_photo" id="editCapturedPhotoFlag" value="0">
+                <input type="hidden" name="captured_photo_data" id="editCapturedPhotoData" value="">
               </div>
 
               <div class="mt-2" id="editUploadInputWrap" style="display:none;">
@@ -707,12 +731,14 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...(p
   const editTakePhotoBtn = document.getElementById('editTakePhotoBtn');
   const editStopCameraBtn = document.getElementById('editStopCameraBtn');
   const editUploadPhotoInput = document.getElementById('editUploadPhotoInput');
+  const editCapturedPhotoData = document.getElementById('editCapturedPhotoData');
 
   let editStream = null;
   let editCapturedBlob = null;
 
   function editResetCameraState() {
     editCapturedBlob = null;
+    if (editCapturedPhotoData) editCapturedPhotoData.value = '';
     if (editCapturedPreview) {
       editCapturedPreview.src = '';
       editCapturedPreview.style.display = 'none';
@@ -764,6 +790,9 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...(p
     canvas.toBlob((blob) => {
       if (!blob) return;
       editCapturedBlob = blob;
+      if (editCapturedPhotoData) {
+        editCapturedPhotoData.value = canvas.toDataURL('image/jpeg', 0.9);
+      }
       if (editCapturedPreview) {
         editCapturedPreview.src = URL.createObjectURL(blob);
         editCapturedPreview.style.display = 'block';
