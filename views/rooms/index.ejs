@@ -227,18 +227,30 @@
         <div class="text-decoration-none room-card-container" data-room-id="<%= room.id %>">
           <div class="card border-0 shadow-sm room-card h-100">
             <div class="card-body">
-              <div class="mb-2">
-                <% if (room.status === 'bos') { %>
-                  <span class="badge bg-success">Boş</span>
-                <% } else if (room.status === 'dolu') { %>
-                  <span class="badge bg-danger">Dolu</span>
-                <% } else if (room.status === 'kismi_dolu') { %>
-                  <span class="badge bg-warning text-dark">Kısmi Dolu</span>
-                <% } else if (room.status === 'depo') { %>
-                  <span class="badge bg-info text-dark"><i class="bi bi-box-seam"></i> Depo</span>
-                <% } else { %>
-                  <span class="badge bg-secondary">Bakımda</span>
-                <% } %>
+              <div class="mb-2 d-flex justify-content-between align-items-center gap-2 flex-wrap">
+                <div>
+                  <% if (room.status === 'bos') { %>
+                    <span class="badge bg-success">Boş</span>
+                  <% } else if (room.status === 'dolu') { %>
+                    <span class="badge bg-danger">Dolu</span>
+                  <% } else if (room.status === 'kismi_dolu') { %>
+                    <span class="badge bg-warning text-dark">Kısmi Dolu</span>
+                  <% } else if (room.status === 'depo') { %>
+                    <span class="badge bg-info text-dark"><i class="bi bi-box-seam"></i> Depo</span>
+                  <% } else { %>
+                    <span class="badge bg-secondary">Bakımda</span>
+                  <% } %>
+                </div>
+                <div>
+                  <% const availability = room.availability_status || 'musait'; %>
+                  <% if (availability === 'kullanilamaz') { %>
+                    <span class="badge bg-danger">Oda Kullanılamaz</span>
+                  <% } else if (availability === 'temizlenmeli') { %>
+                    <span class="badge bg-warning text-dark">Temizlenmesi Gerekiyor</span>
+                  <% } else { %>
+                    <span class="badge bg-success">Müsait</span>
+                  <% } %>
+                </div>
               </div>
 
               <div class="room-layout">

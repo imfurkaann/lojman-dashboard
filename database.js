@@ -32,6 +32,7 @@ function initDatabase() {
       floor TEXT,
       description TEXT,
       status TEXT DEFAULT 'bos' CHECK(status IN ('bos', 'dolu', 'kismi_dolu', 'bakimda', 'depo')),
+      availability_status TEXT DEFAULT 'musait' CHECK(availability_status IN ('musait', 'temizlenmeli', 'kullanilamaz')),
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -188,9 +189,11 @@ function runMigrations() {
         floor TEXT,
         description TEXT,
         status TEXT DEFAULT 'bos' CHECK(status IN ('bos', 'dolu', 'kismi_dolu', 'bakimda', 'depo')),
+        availability_status TEXT DEFAULT 'musait' CHECK(availability_status IN ('musait', 'temizlenmeli', 'kullanilamaz')),
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
-      INSERT INTO rooms_new SELECT * FROM rooms;
+      INSERT INTO rooms_new (id, room_number, capacity, floor, description, status, availability_status, created_at)
+      SELECT id, room_number, capacity, floor, description, status, 'musait', created_at FROM rooms;
       DROP TABLE rooms;
       ALTER TABLE rooms_new RENAME TO rooms;
     `);
@@ -207,13 +210,23 @@ function runMigrations() {
         floor TEXT,
         description TEXT,
         status TEXT DEFAULT 'bos' CHECK(status IN ('bos', 'dolu', 'kismi_dolu', 'bakimda', 'depo')),
+        availability_status TEXT DEFAULT 'musait' CHECK(availability_status IN ('musait', 'temizlenmeli', 'kullanilamaz')),
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
-      INSERT INTO rooms_new SELECT * FROM rooms;
+      INSERT INTO rooms_new (id, room_number, capacity, floor, description, status, availability_status, created_at)
+      SELECT id, room_number, capacity, floor, description, status, 'musait', created_at FROM rooms;
       DROP TABLE rooms;
       ALTER TABLE rooms_new RENAME TO rooms;
     `);
     console.log('Migration: room_number INTEGER olarak güncellendi');
+  }
+
+  const roomColumns = db.prepare('PRAGMA table_info(rooms)').all();
+  const hasAvailabilityStatus = roomColumns.some(col => col.name === 'availability_status');
+  if (!hasAvailabilityStatus) {
+    db.exec("ALTER TABLE rooms ADD COLUMN availability_status TEXT DEFAULT 'musait'");
+    db.exec("UPDATE rooms SET availability_status = 'musait' WHERE availability_status IS NULL OR availability_status = ''");
+    console.log('Migration: rooms tablosuna availability_status alanı eklendi');
   }
 
   // Kayıtlı eşya isimleri tablosu

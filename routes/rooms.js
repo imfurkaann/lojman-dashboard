@@ -35,6 +35,7 @@ const upload = multer({
 
 // Kat etiketleri
 const FLOORS = ['Bodrum', 'Zemin Kat', '1. Kat', '2. Kat', '3. Kat', '4. Kat', '5. Kat', '6. Kat', '7. Kat', '8. Kat', '9. Kat', '10. Kat'];
+const ROOM_AVAILABILITY_STATUSES = ['musait', 'temizlenmeli', 'kullanilamaz'];
 const DEFAULT_ROOM_INVENTORY = [
   { name: 'Yastık', quantity: 1 },
   { name: 'Nevresim Takımı', quantity: 1 },
@@ -103,6 +104,37 @@ function isRoomAtCapacity(roomId, excludePersonnelId = null) {
 
 function normalizeIssueStatus(status) {
   return status === 'cozuldu' ? 'cozuldu' : 'acik';
+}
+
+function normalizeRoomAvailabilityStatus(value) {
+  const normalized = String(value || '').toLowerCase().trim();
+  return ROOM_AVAILABILITY_STATUSES.includes(normalized) ? normalized : 'musait';
+}
+
+function parseBooleanFlag(value) {
+  return value === true || value === '1' || value === 'true' || value === 'on';
+}
+
+function validateRoomAssignmentAvailability(room, allowCleaningOverride = false) {
+  const availability = normalizeRoomAvailabilityStatus(room && room.availability_status ? room.availability_status : 'musait');
+
+  if (availability === 'kullanilamaz') {
+    return {
+      ok: false,
+      reason: 'unavailable',
+      message: 'Bu oda kullanılamaz durumda olduğu için personel atanamaz.'
+    };
+  }
+
+  if (availability === 'temizlenmeli' && !allowCleaningOverride) {
+    return {
+      ok: false,
+      reason: 'needs_confirmation',
+      message: 'Bu oda temizlenmesi gerekiyor durumunda. Devam etmek için onay vermelisiniz.'
+    };
+  }
+
+  return { ok: true };
 }
 
 function mapIssueTagToCondition(tag) {
@@ -408,7 +440,7 @@ router.get('/:id', (req, res) => {
 
 // Odaya personel ata (mevcut personeli seçerek)
 router.post('/:id/personel-ata', (req, res) => {
-  const { personnel_id, handover_payload } = req.body;
+  const { personnel_id, handover_payload, allow_cleaning_override } = req.body;
   const roomId = parseInt(req.params.id);
   
   if (!personnel_id) {
@@ -424,6 +456,11 @@ router.post('/:id/personel-ata', (req, res) => {
     const room = db.prepare('SELECT * FROM rooms WHERE id = ?').get(roomId);
     if (!room) {
       return res.status(404).send('Oda bulunamadı.');
+    }
+
+    const availabilityCheck = validateRoomAssignmentAvailability(room, parseBooleanFlag(allow_cleaning_override));
+    if (!availabilityCheck.ok) {
+      return res.redirect(`/odalar/${roomId}?error=${encodeURIComponent(availabilityCheck.message)}`);
     }
 
     const roomCapacity = isRoomAtCapacity(roomId, Number(personnel_id));
@@ -507,6 +544,24 @@ router.post('/:id/guncelle', (req, res) => {
   const room = db.prepare('SELECT room_number FROM rooms WHERE id = ?').get(req.params.id);
   logActivity('oda_guncellendi', `${room.room_number} numaralı oda güncellendi`, null, req.session.user.id);
   res.redirect(`/odalar/${req.params.id}`);
+});
+
+router.post('/:id/musaitlik-guncelle', (req, res) => {
+  const roomId = Number.parseInt(req.params.id, 10);
+  const room = db.prepare('SELECT id, room_number, availability_status FROM rooms WHERE id = ?').get(roomId);
+  if (!room) return res.redirect('/odalar');
+
+  const nextAvailability = normalizeRoomAvailabilityStatus(req.body.availability_status);
+  db.prepare('UPDATE rooms SET availability_status = ? WHERE id = ?').run(nextAvailability, roomId);
+
+  logActivity(
+    'oda_musaitlik_guncellendi',
+    `${room.room_number} numaralı odanın müsaitlik durumu güncellendi`,
+    `Eski: ${room.availability_status || 'musait'} | Yeni: ${nextAvailability}`,
+    req.session.user.id
+  );
+
+  res.redirect(`/odalar/${roomId}`);
 });
 
 // Oda sil
@@ -758,11 +813,16 @@ router.post('/:id/envanter/:itemId/eksik', (req, res) => {
 
 // Odaya personel ekle
 router.post('/:id/personel-ekle', upload.single('photo'), (req, res) => {
-  const { first_name, last_name, gender, phone, department, tc_number, form_signed, handover_payload, key_delivered, action } = req.body;
+  const { first_name, last_name, gender, phone, department, tc_number, form_signed, handover_payload, key_delivered, action, allow_cleaning_override } = req.body;
   const safeUserId = getSafeUserId(req);
   const normalizedTc = (tc_number || '').trim();
   const room = db.prepare('SELECT * FROM rooms WHERE id = ?').get(req.params.id);
   if (!room || room.status === 'depo') return res.redirect('/odalar');
+
+  const availabilityCheck = validateRoomAssignmentAvailability(room, parseBooleanFlag(allow_cleaning_override));
+  if (!availabilityCheck.ok) {
+    return res.redirect(`/odalar/${req.params.id}?error=${encodeURIComponent(availabilityCheck.message)}`);
+  }
 
   const photoPath = req.file ? `/uploads/personnel/${req.file.filename}` : null;
   const isFormSigned = form_signed === 'on' ? 1 : 0;

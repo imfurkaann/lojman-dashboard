@@ -8,7 +8,8 @@ router.get('/', (req, res) => {
   const emptyRooms = db.prepare("SELECT COUNT(*) as count FROM rooms WHERE status = 'bos'").get().count;
   const fullRooms = db.prepare("SELECT COUNT(*) as count FROM rooms WHERE status = 'dolu'").get().count;
   const partialRooms = db.prepare("SELECT COUNT(*) as count FROM rooms WHERE status = 'kismi_dolu'").get().count;
-  const maintenanceRooms = db.prepare("SELECT COUNT(*) as count FROM rooms WHERE status = 'bakimda'").get().count;
+  const cleaningNeededRooms = db.prepare("SELECT COUNT(*) as count FROM rooms WHERE status != 'depo' AND COALESCE(availability_status, 'musait') = 'temizlenmeli'").get().count;
+  const unavailableRooms = db.prepare("SELECT COUNT(*) as count FROM rooms WHERE status != 'depo' AND COALESCE(availability_status, 'musait') = 'kullanilamaz'").get().count;
   const storageRooms = db.prepare("SELECT COUNT(*) as count FROM rooms WHERE status = 'depo'").get().count;
 
   // Personel istatistikleri
@@ -35,7 +36,7 @@ router.get('/', (req, res) => {
 
   res.render('dashboard', {
     title: 'Ana Sayfa',
-    totalRooms, emptyRooms, fullRooms, partialRooms, maintenanceRooms, storageRooms,
+    totalRooms, emptyRooms, fullRooms, partialRooms, cleaningNeededRooms, unavailableRooms, storageRooms,
     registeredPersonnel, pendingEntries, pendingExits,
     openIssues, unreturned, recentActivity
   });

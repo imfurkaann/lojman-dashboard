@@ -313,7 +313,9 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
             <select class="form-select" name="room_id" id="roomSelectForHandover">
               <option value="">Oda Atama</option>
               <% availableRooms.forEach(r => { %>
-                <option value="<%= r.id %>">Oda <%= r.room_number %> (<%= r.occupant_count %>/<%= r.capacity %>)</option>
+                <option value="<%= r.id %>" data-availability="<%= r.availability_status || 'musait' %>">
+                  Oda <%= r.room_number %> (<%= r.occupant_count %>/<%= r.capacity %>)<%= (r.availability_status === 'temizlenmeli') ? ' - Temizlenmesi Gerekiyor' : '' %>
+                </option>
               <% }) %>
             </select>
           </div>
@@ -351,6 +353,7 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
           </div>
 
           <input type="hidden" name="handover_payload" id="handoverPayloadInput">
+          <input type="hidden" name="allow_cleaning_override" id="allowCleaningOverrideInput" value="0">
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
@@ -377,7 +380,9 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
             <select class="form-select" name="room_id" id="assignRoomSelect" required>
               <option value="">Boş odalardan birini seçin...</option>
               <% availableRooms.forEach(r => { %>
-                <option value="<%= r.id %>">Oda <%= r.room_number %> (<%= r.occupant_count %>/<%= r.capacity %>)</option>
+                <option value="<%= r.id %>" data-availability="<%= r.availability_status || 'musait' %>">
+                  Oda <%= r.room_number %> (<%= r.occupant_count %>/<%= r.capacity %>)<%= (r.availability_status === 'temizlenmeli') ? ' - Temizlenmesi Gerekiyor' : '' %>
+                </option>
               <% }) %>
             </select>
           </div>
@@ -415,6 +420,7 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
           </div>
 
           <input type="hidden" name="handover_payload" id="assignHandoverPayloadInput">
+          <input type="hidden" name="allow_cleaning_override" id="assignAllowCleaningOverrideInput" value="0">
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
@@ -436,6 +442,7 @@ const roomInventoryMap = <%- JSON.stringify(roomInventoryMap || {}) %>;
 const roomInventoryItemsMap = <%- JSON.stringify(roomInventoryItemsMap || {}) %>;
 const roomKeyLimitMap = <%- JSON.stringify(roomKeyLimitMap || {}) %>;
 const roomOpenIssueMap = <%- JSON.stringify(roomOpenIssueMap || {}) %>;
+const roomAvailabilityMap = <%- JSON.stringify(roomAvailabilityMap || {}) %>;
 const roomSelectForHandover = document.getElementById('roomSelectForHandover');
 const handoverSection = document.getElementById('handoverSection');
 const handoverPayloadInput = document.getElementById('handoverPayloadInput');
@@ -446,6 +453,8 @@ const assignRoomSelect = document.getElementById('assignRoomSelect');
 const assignHandoverSection = document.getElementById('assignHandoverSection');
 const assignHandoverPayloadInput = document.getElementById('assignHandoverPayloadInput');
 const assignKeyCountInfo = document.getElementById('assignKeyCountInfo');
+const allowCleaningOverrideInput = document.getElementById('allowCleaningOverrideInput');
+const assignAllowCleaningOverrideInput = document.getElementById('assignAllowCleaningOverrideInput');
 
 const addPhotoBtn = document.getElementById('addPhotoBtn');
 const photoOptions = document.getElementById('photoOptions');
@@ -695,6 +704,28 @@ function getRequiredKeyCountByRoomId(roomId) {
   const value = Number(roomKeyLimitMap[roomId]);
   if (Number.isFinite(value) && value >= 0) return value;
   return 3;
+}
+
+function getRoomAvailabilityById(roomId) {
+  return String(roomAvailabilityMap[String(roomId)] || roomAvailabilityMap[roomId] || 'musait');
+}
+
+function ensureAssignmentAvailability(roomId, overrideInputEl) {
+  if (overrideInputEl) overrideInputEl.value = '0';
+  const availability = getRoomAvailabilityById(roomId);
+
+  if (availability === 'kullanilamaz') {
+    alert('Bu oda kullanılamaz durumda olduğu için personel atanamaz.');
+    return false;
+  }
+
+  if (availability === 'temizlenmeli') {
+    const confirmed = window.confirm('Seçilen oda temizlenmesi gerekiyor durumda. Yine de personele atamak istiyor musunuz?');
+    if (!confirmed) return false;
+    if (overrideInputEl) overrideInputEl.value = '1';
+  }
+
+  return true;
 }
 
 function normalizeItemKey(name) {
@@ -965,6 +996,9 @@ document.querySelector('#addPersonnelModal form').addEventListener('submit', fun
   e.preventDefault();
   
   const roomId = roomSelectForHandover.value;
+  if (roomId && !ensureAssignmentAvailability(roomId, allowCleaningOverrideInput)) {
+    return;
+  }
   
   // Oda seçilmişse handover validasyonları kontrol et
   if (roomId) {
@@ -1066,6 +1100,11 @@ if (assignRoomForm) {
   assignRoomForm.addEventListener('submit', function(e) {
     const roomId = assignRoomSelect ? assignRoomSelect.value : '';
     if (!roomId) return;
+
+    if (!ensureAssignmentAvailability(roomId, assignAllowCleaningOverrideInput)) {
+      e.preventDefault();
+      return;
+    }
 
     const items = [];
     let invalid = false;

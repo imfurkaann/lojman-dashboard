@@ -7,7 +7,37 @@ const { db, logActivity, updateRoomStatus, syncRoomKeyStock, recordRoomEntry, re
 const { encryptTcNumber, verifyTcNumber, blurTcNumber } = require('../middleware/tc-encryption');
 
 const INVENTORY_ISSUE_TAGS = ['eksik', 'arizali', 'kirik', 'calismiyor', 'kayip', 'diger'];
+const ROOM_AVAILABILITY_STATUSES = ['musait', 'temizlenmeli', 'kullanilamaz'];
 const MIN_ROOM_KEY_COUNT = 0;
+
+function normalizeRoomAvailabilityStatus(value) {
+  const normalized = String(value || '').toLowerCase().trim();
+  return ROOM_AVAILABILITY_STATUSES.includes(normalized) ? normalized : 'musait';
+}
+
+function parseBooleanFlag(value) {
+  return value === true || value === '1' || value === 'true' || value === 'on';
+}
+
+function validateRoomAssignmentAvailability(room, allowCleaningOverride = false) {
+  const availability = normalizeRoomAvailabilityStatus(room && room.availability_status ? room.availability_status : 'musait');
+
+  if (availability === 'kullanilamaz') {
+    return {
+      ok: false,
+      message: 'Bu oda kullanılamaz durumda olduğu için personel atanamaz.'
+    };
+  }
+
+  if (availability === 'temizlenmeli' && !allowCleaningOverride) {
+    return {
+      ok: false,
+      message: 'Bu oda temizlenmesi gerekiyor durumunda. Devam etmek için onay vermelisiniz.'
+    };
+  }
+
+  return { ok: true };
+}
 
 function getRoomKeyLimit(roomId, fallbackLimit = 0) {
   const keyRow = db.prepare("SELECT max_quantity, quantity FROM room_inventory WHERE room_id = ? AND LOWER(item_name) = LOWER('Oda Anahtarı')").get(roomId);
@@ -319,8 +349,12 @@ router.get('/', (req, res) => {
 
   const personnel = db.prepare(query).all(...params);
   const departments = db.prepare('SELECT DISTINCT department FROM personnel WHERE department IS NOT NULL ORDER BY department').all();
-  const rooms = db.prepare("SELECT id, room_number, capacity, (SELECT COUNT(*) FROM personnel pp WHERE pp.room_id = rooms.id AND pp.status = 'aktif') as occupant_count FROM rooms WHERE status NOT IN ('bakimda', 'depo') ORDER BY room_number").all();
+  const rooms = db.prepare("SELECT id, room_number, capacity, availability_status, (SELECT COUNT(*) FROM personnel pp WHERE pp.room_id = rooms.id AND pp.status = 'aktif') as occupant_count FROM rooms WHERE status NOT IN ('bakimda', 'depo') AND COALESCE(availability_status, 'musait') != 'kullanilamaz' ORDER BY room_number").all();
   const availableRooms = rooms.filter(r => r.occupant_count < r.capacity);
+  const roomAvailabilityMap = {};
+  rooms.forEach(room => {
+    roomAvailabilityMap[room.id] = normalizeRoomAvailabilityStatus(room.availability_status);
+  });
 
   const inventoryRows = db.prepare("SELECT room_id, item_name, quantity, max_quantity FROM room_inventory WHERE room_id IN (SELECT id FROM rooms WHERE status NOT IN ('bakimda', 'depo'))").all();
   const roomInventoryMap = {};
@@ -383,6 +417,7 @@ router.get('/', (req, res) => {
     roomInventoryItemsMap,
     roomKeyLimitMap,
     roomOpenIssueMap,
+    roomAvailabilityMap,
     search,
     department,
     statusFilter: status,
@@ -399,7 +434,7 @@ router.get('/', (req, res) => {
 // Personel oda atama
 router.post('/:id/oda-ata', (req, res) => {
   const personnelId = req.params.id;
-  const { room_id, handover_payload } = req.body;
+  const { room_id, handover_payload, allow_cleaning_override } = req.body;
   const rawUserId = req.session && req.session.user ? req.session.user.id : null;
   const actorUser = rawUserId ? db.prepare('SELECT id FROM users WHERE id = ?').get(rawUserId) : null;
   const safeUserId = actorUser ? actorUser.id : null;
@@ -416,6 +451,11 @@ router.post('/:id/oda-ata', (req, res) => {
   const room = db.prepare('SELECT * FROM rooms WHERE id = ?').get(room_id);
   if (!room) {
     return res.status(404).send('Oda bulunamadı.');
+  }
+
+  const availabilityCheck = validateRoomAssignmentAvailability(room, parseBooleanFlag(allow_cleaning_override));
+  if (!availabilityCheck.ok) {
+    return res.status(400).send(availabilityCheck.message);
   }
 
   const roomCapacity = isRoomAtCapacity(Number(room_id), Number(personnelId));
@@ -489,7 +529,7 @@ router.post('/ekle', (req, res, next) => {
 // Personel ekle
 router.post('/ekle', async (req, res) => {
   try {
-    const { first_name, last_name, gender, phone, department, room_id, handover_payload, key_delivered, tc_number, form_signed, action } = req.body;
+    const { first_name, last_name, gender, phone, department, room_id, handover_payload, key_delivered, tc_number, form_signed, action, allow_cleaning_override } = req.body;
     const normalizedTc = (tc_number || '').trim();
     const uploadedPhotoPath = req.file ? `/uploads/personnel/${req.file.filename}` : null;
     const capturedPhotoPath = uploadedPhotoPath ? null : saveCapturedPhotoData(req.body.captured_photo_data);
@@ -552,6 +592,18 @@ router.post('/ekle', async (req, res) => {
     const previousRoomId = existingPerson.room_id ? Number(existingPerson.room_id) : null;
     const nextRoomId = room_id ? parseInt(room_id) : null;
     if (nextRoomId) {
+      const nextRoom = db.prepare('SELECT * FROM rooms WHERE id = ?').get(nextRoomId);
+      const availabilityCheck = validateRoomAssignmentAvailability(nextRoom, parseBooleanFlag(allow_cleaning_override));
+      if (!availabilityCheck.ok) {
+        if (req.file) {
+          fs.unlink(path.join(uploadDir, req.file.filename), () => {});
+        }
+        if (wantsJson) {
+          return res.status(400).json({ error: availabilityCheck.message });
+        }
+        return res.redirect('/personel?error=' + encodeURIComponent(availabilityCheck.message));
+      }
+
       const roomCapacity = isRoomAtCapacity(nextRoomId, Number(existingPerson.id));
       if (roomCapacity.exists && roomCapacity.atCapacity) {
         if (req.file) {
@@ -595,6 +647,18 @@ router.post('/ekle', async (req, res) => {
   // Normal flow: yeni kayıt oluştur
     const parsedRoomId = room_id ? parseInt(room_id) : null;
     if (parsedRoomId) {
+      const selectedRoom = db.prepare('SELECT * FROM rooms WHERE id = ?').get(parsedRoomId);
+      const availabilityCheck = validateRoomAssignmentAvailability(selectedRoom, parseBooleanFlag(allow_cleaning_override));
+      if (!availabilityCheck.ok) {
+        if (req.file) {
+          fs.unlink(path.join(uploadDir, req.file.filename), () => {});
+        }
+        if (wantsJson) {
+          return res.status(400).json({ error: availabilityCheck.message });
+        }
+        return res.redirect('/personel?error=' + encodeURIComponent(availabilityCheck.message));
+      }
+
       const roomCapacity = isRoomAtCapacity(parsedRoomId);
       if (roomCapacity.exists && roomCapacity.atCapacity) {
         if (req.file) {
@@ -677,7 +741,7 @@ router.post('/ekle-ve-ata', (req, res, next) => {
 });
 
 router.post('/ekle-ve-ata', async (req, res) => {
-  const { first_name, last_name, gender, phone, department, tc_number, room_id, handover_payload } = req.body;
+  const { first_name, last_name, gender, phone, department, tc_number, room_id, handover_payload, allow_cleaning_override } = req.body;
   const normalizedTc = (tc_number || '').trim();
   const uploadedPhotoPath = req.file ? `/uploads/personnel/${req.file.filename}` : null;
   const capturedPhotoPath = uploadedPhotoPath ? null : saveCapturedPhotoData(req.body.captured_photo_data);
@@ -723,6 +787,12 @@ router.post('/ekle-ve-ata', async (req, res) => {
   const roomExists = db.prepare('SELECT id FROM rooms WHERE id = ?').get(parsedRoomId);
   if (!roomExists) {
     return res.redirect('/odalar?error=' + encodeURIComponent('Geçersiz oda bilgisi.'));
+  }
+
+  const selectedRoom = db.prepare('SELECT * FROM rooms WHERE id = ?').get(parsedRoomId);
+  const availabilityCheck = validateRoomAssignmentAvailability(selectedRoom, parseBooleanFlag(allow_cleaning_override));
+  if (!availabilityCheck.ok) {
+    return res.redirect(`/odalar/${parsedRoomId}?error=` + encodeURIComponent(availabilityCheck.message));
   }
 
   const roomCapacity = isRoomAtCapacity(parsedRoomId);
@@ -816,8 +886,12 @@ router.get('/:id', (req, res) => {
   person.photo_path = normalizePhotoPath(person.photo_path);
 
   const complaints = db.prepare('SELECT pc.*, u.full_name as recorder FROM personnel_complaints pc LEFT JOIN users u ON pc.recorded_by = u.id WHERE pc.personnel_id = ? ORDER BY pc.created_at DESC').all(person.id);
-  const rooms = db.prepare("SELECT id, room_number, capacity, (SELECT COUNT(*) FROM personnel pp WHERE pp.room_id = rooms.id AND pp.status = 'aktif') as occupant_count FROM rooms WHERE status NOT IN ('bakimda', 'depo') ORDER BY room_number").all();
+  const rooms = db.prepare("SELECT id, room_number, capacity, availability_status, (SELECT COUNT(*) FROM personnel pp WHERE pp.room_id = rooms.id AND pp.status = 'aktif') as occupant_count FROM rooms WHERE status NOT IN ('bakimda', 'depo') AND COALESCE(availability_status, 'musait') != 'kullanilamaz' ORDER BY room_number").all();
   const availableRooms = rooms.filter(r => r.occupant_count < r.capacity || r.id === person.room_id);
+  const roomAvailabilityMap = {};
+  rooms.forEach(room => {
+    roomAvailabilityMap[room.id] = normalizeRoomAvailabilityStatus(room.availability_status);
+  });
 
   const inventoryRows = db.prepare("SELECT room_id, item_name, quantity FROM room_inventory WHERE room_id IN (SELECT id FROM rooms WHERE status NOT IN ('bakimda', 'depo'))").all();
   const roomInventoryMap = {};
@@ -945,6 +1019,7 @@ router.get('/:id', (req, res) => {
     checkoutHandoverItems,
     openCheckoutIssueMap,
     roomOpenIssueMap,
+    roomAvailabilityMap,
     personRoomHistory
   });
 });
@@ -1063,7 +1138,7 @@ router.post('/:id/guncelle', upload.single('photo'), async (req, res) => {
 
 // Oda değiştir
 router.post('/:id/oda-degistir', (req, res) => {
-  const { new_room_id, reassign_handover_payload, reassign_form_signed, reassign_key_delivered } = req.body;
+  const { new_room_id, reassign_handover_payload, reassign_form_signed, reassign_key_delivered, allow_cleaning_override } = req.body;
   const person = db.prepare('SELECT p.*, r.room_number as old_room FROM personnel p LEFT JOIN rooms r ON p.room_id = r.id WHERE p.id = ?').get(req.params.id);
   if (!person) return res.redirect('/personel');
 
@@ -1072,9 +1147,14 @@ router.post('/:id/oda-degistir', (req, res) => {
   const roomChanged = oldRoomId !== parsedNewRoomId;
 
   if (parsedNewRoomId) {
-    const roomExists = db.prepare('SELECT id FROM rooms WHERE id = ?').get(parsedNewRoomId);
+    const roomExists = db.prepare('SELECT * FROM rooms WHERE id = ?').get(parsedNewRoomId);
     if (!roomExists) {
       return res.status(400).send('Geçersiz yeni oda bilgisi.');
+    }
+
+    const availabilityCheck = validateRoomAssignmentAvailability(roomExists, parseBooleanFlag(allow_cleaning_override));
+    if (!availabilityCheck.ok) {
+      return res.status(400).send(availabilityCheck.message);
     }
 
     const roomCapacity = isRoomAtCapacity(parsedNewRoomId, Number(req.params.id));

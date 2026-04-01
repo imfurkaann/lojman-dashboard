@@ -20,6 +20,7 @@ const defaultDepartmentOptions = [
 const dynamicDepartmentOptions = (departments || []).map(d => d.department).filter(Boolean);
 const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dynamicDepartmentOptions]))
   .sort((a, b) => a.localeCompare(b, 'tr'));
+const roomAvailability = room.availability_status || 'musait';
 %>
 
 <div class="d-flex justify-content-between align-items-center mb-4">
@@ -40,7 +41,15 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
       <% } %>
     </h4>
   </div>
-  <div>
+  <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+    <form method="POST" action="/odalar/<%= room.id %>/musaitlik-guncelle" class="d-flex align-items-center gap-2">
+      <label class="small text-muted mb-0">Müsaitlik</label>
+      <select class="form-select form-select-sm" name="availability_status" style="min-width: 220px;" onchange="this.form.submit()">
+        <option value="musait" <%= roomAvailability === 'musait' ? 'selected' : '' %>>Oda Müsait</option>
+        <option value="temizlenmeli" <%= roomAvailability === 'temizlenmeli' ? 'selected' : '' %>>Temizlenmesi Gerekiyor</option>
+        <option value="kullanilamaz" <%= roomAvailability === 'kullanilamaz' ? 'selected' : '' %>>Oda Kullanılamaz</option>
+      </select>
+    </form>
     <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#editRoomModal">
       <i class="bi bi-pencil"></i> Düzenle
     </button>
@@ -539,6 +548,7 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
     <div class="modal-content">
       <form method="POST" action="/personel/ekle-ve-ata" enctype="multipart/form-data">
         <input type="hidden" name="room_id" value="<%= room.id %>">
+        <input type="hidden" name="allow_cleaning_override" id="addAllowCleaningOverrideInput" value="0">
         <div class="modal-header">
           <h5 class="modal-title"><i class="bi bi-person-plus"></i> Odaya Yeni Personel Ekle</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -744,6 +754,7 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
     <div class="modal-content">
       <form method="POST" action="/odalar/<%= room.id %>/personel-ata" id="assignAndHandoverForm">
         <input type="hidden" name="personnel_id" id="assignPersonnelId">
+        <input type="hidden" name="allow_cleaning_override" id="assignAllowCleaningOverrideInput" value="0">
         <div class="modal-header">
           <h5 class="modal-title">Personel Ata ve Zimmetle</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -1307,6 +1318,7 @@ document.addEventListener('DOMContentLoaded', function () {
       const personnelIdInput = assignAndHandoverModal.querySelector('#assignPersonnelId');
       const personnelNameSpan = assignAndHandoverModal.querySelector('#assignPersonnelName');
       const payloadInput = assignAndHandoverModal.querySelector('#assignHandoverPayloadInput');
+      const assignAllowCleaningOverrideInput = assignAndHandoverModal.querySelector('#assignAllowCleaningOverrideInput');
 
       assignAndHandoverModal.addEventListener('show.bs.modal', event => {
         const button = event.relatedTarget;
@@ -1321,6 +1333,21 @@ document.addEventListener('DOMContentLoaded', function () {
       });
 
       form.addEventListener('submit', function(e) {
+        if (assignAllowCleaningOverrideInput) assignAllowCleaningOverrideInput.value = '0';
+        if ('<%= roomAvailability %>' === 'kullanilamaz') {
+          e.preventDefault();
+          alert('Bu oda kullanılamaz durumda olduğu için personel atanamaz.');
+          return;
+        }
+        if ('<%= roomAvailability %>' === 'temizlenmeli') {
+          const confirmed = window.confirm('Bu oda temizlenmesi gerekiyor durumda. Yine de personele atamak istiyor musunuz?');
+          if (!confirmed) {
+            e.preventDefault();
+            return;
+          }
+          if (assignAllowCleaningOverrideInput) assignAllowCleaningOverrideInput.value = '1';
+        }
+
         const handoverData = {
           form_signed: form.querySelector('#assignFormSignedCheck').checked,
           key_delivered: form.querySelector('#assignKeyDeliveredCheck').checked,
@@ -1378,6 +1405,7 @@ document.addEventListener('DOMContentLoaded', function () {
       const roomTakePhotoBtn = addPersonnelAndAssignModal.querySelector('#roomTakePhotoBtn');
       const roomStopCameraBtn = addPersonnelAndAssignModal.querySelector('#roomStopCameraBtn');
       const roomCapturedPhotoFlag = addPersonnelAndAssignModal.querySelector('#roomCapturedPhotoFlag');
+      const addAllowCleaningOverrideInput = addPersonnelAndAssignModal.querySelector('#addAllowCleaningOverrideInput');
 
       let roomCameraStream = null;
       let roomCapturedBlob = null;
@@ -1548,6 +1576,21 @@ document.addEventListener('DOMContentLoaded', function () {
       });
 
       addForm.addEventListener('submit', function(event) {
+        if (addAllowCleaningOverrideInput) addAllowCleaningOverrideInput.value = '0';
+        if ('<%= roomAvailability %>' === 'kullanilamaz') {
+          event.preventDefault();
+          alert('Bu oda kullanılamaz durumda olduğu için personel atanamaz.');
+          return;
+        }
+        if ('<%= roomAvailability %>' === 'temizlenmeli') {
+          const confirmed = window.confirm('Bu oda temizlenmesi gerekiyor durumda. Yine de personele atamak istiyor musunuz?');
+          if (!confirmed) {
+            event.preventDefault();
+            return;
+          }
+          if (addAllowCleaningOverrideInput) addAllowCleaningOverrideInput.value = '1';
+        }
+
         const handoverData = {
           form_signed: !!addForm.querySelector('#formSignedCheck')?.checked,
           key_delivered: !!addForm.querySelector('#keyDeliveredCheck')?.checked,

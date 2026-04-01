@@ -59,8 +59,8 @@
 </div>
 
 <!-- Oda Durumları Hızlı Bakış -->
-<div class="row g-3 mb-4">
-  <div class="col-md-3">
+<div class="row row-cols-1 row-cols-sm-2 row-cols-lg-5 g-3 mb-4">
+  <div class="col">
     <div class="card border-start border-success border-4">
       <div class="card-body py-2 d-flex justify-content-between align-items-center">
         <span class="text-muted">Boş Odalar</span>
@@ -68,7 +68,7 @@
       </div>
     </div>
   </div>
-  <div class="col-md-3">
+  <div class="col">
     <div class="card border-start border-danger border-4">
       <div class="card-body py-2 d-flex justify-content-between align-items-center">
         <span class="text-muted">Dolu Odalar</span>
@@ -76,7 +76,7 @@
       </div>
     </div>
   </div>
-  <div class="col-md-3">
+  <div class="col">
     <div class="card border-start border-warning border-4">
       <div class="card-body py-2 d-flex justify-content-between align-items-center">
         <span class="text-muted">Kısmi Dolu</span>
@@ -84,11 +84,19 @@
       </div>
     </div>
   </div>
-  <div class="col-md-3">
-    <div class="card border-start border-secondary border-4">
+  <div class="col">
+    <div class="card border-start border-warning border-4">
       <div class="card-body py-2 d-flex justify-content-between align-items-center">
-        <span class="text-muted">Bakımda</span>
-        <span class="badge bg-secondary fs-6"><%= maintenanceRooms %></span>
+        <span class="text-muted">Temizlenmesi Gerekiyor</span>
+        <span class="badge bg-warning text-dark fs-6"><%= cleaningNeededRooms %></span>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="card border-start border-danger border-4">
+      <div class="card-body py-2 d-flex justify-content-between align-items-center">
+        <span class="text-muted">Kullanılamaz</span>
+        <span class="badge bg-danger fs-6"><%= unavailableRooms %></span>
       </div>
     </div>
   </div>

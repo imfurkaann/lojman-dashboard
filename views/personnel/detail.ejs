@@ -561,12 +561,14 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...(p
             <select class="form-select" name="new_room_id" id="reassignRoomSelect">
               <option value="">Oda Kaldır</option>
               <% availableRooms.forEach(r => { %>
-                <option value="<%= r.id %>" <%= person.room_id === r.id ? 'selected' : '' %>>
-                  Oda <%= r.room_number %> (<%= r.occupant_count %>/<%= r.capacity %>)
+                <option value="<%= r.id %>" data-availability="<%= r.availability_status || 'musait' %>" <%= person.room_id === r.id ? 'selected' : '' %>>
+                  Oda <%= r.room_number %> (<%= r.occupant_count %>/<%= r.capacity %>)<%= (r.availability_status === 'temizlenmeli') ? ' - Temizlenmesi Gerekiyor' : '' %>
                 </option>
               <% }) %>
             </select>
           </div>
+
+          <input type="hidden" name="allow_cleaning_override" id="detailAllowCleaningOverrideInput" value="0">
 
           <% if (person.status === 'cikis_yapti') { %>
           <div id="reassignHandoverSection" class="border rounded p-3" style="display:none;">
@@ -711,8 +713,51 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...(p
 <script id="checkoutIssueMapData" type="application/json"><%- JSON.stringify(openCheckoutIssueMap || {}) %></script>
 <script id="roomInventoryItemsMapData" type="application/json"><%- JSON.stringify(roomInventoryItemsMap || {}) %></script>
 <script id="roomOpenIssueMapData" type="application/json"><%- JSON.stringify(roomOpenIssueMap || {}) %></script>
+<script id="roomAvailabilityMapData" type="application/json"><%- JSON.stringify(roomAvailabilityMap || {}) %></script>
 
 <script>
+// Room availability guard for room change/assignment
+(function() {
+  const roomAvailabilityRaw = document.getElementById('roomAvailabilityMapData');
+  const roomSelect = document.getElementById('reassignRoomSelect');
+  const form = document.querySelector('#changeRoomModal form');
+  const overrideInput = document.getElementById('detailAllowCleaningOverrideInput');
+  if (!roomAvailabilityRaw || !roomSelect || !form || !overrideInput) return;
+
+  let roomAvailabilityMap = {};
+  try {
+    roomAvailabilityMap = JSON.parse(roomAvailabilityRaw.textContent || '{}');
+  } catch (_) {
+    roomAvailabilityMap = {};
+  }
+
+  function getAvailability(roomId) {
+    return String(roomAvailabilityMap[String(roomId)] || roomAvailabilityMap[roomId] || 'musait');
+  }
+
+  form.addEventListener('submit', (e) => {
+    overrideInput.value = '0';
+    const roomId = roomSelect.value;
+    if (!roomId) return;
+
+    const availability = getAvailability(roomId);
+    if (availability === 'kullanilamaz') {
+      e.preventDefault();
+      alert('Bu oda kullanılamaz durumda olduğu için personel atanamaz.');
+      return;
+    }
+
+    if (availability === 'temizlenmeli') {
+      const confirmed = window.confirm('Seçilen oda temizlenmesi gerekiyor durumda. Yine de personele atamak istiyor musunuz?');
+      if (!confirmed) {
+        e.preventDefault();
+        return;
+      }
+      overrideInput.value = '1';
+    }
+  });
+})();
+
 // Edit modal logic (mirrors add-personnel modal UX)
 (function() {
   const editModalEl = document.getElementById('editPersonModal');
