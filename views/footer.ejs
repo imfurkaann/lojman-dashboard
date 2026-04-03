@@ -25,6 +25,29 @@
     socket.on('disconnect', () => {
       console.log('Socket.IO bağlantısı koptu');
     });
+
+    // Uygulamanin herhangi bir yerinde veri degisikligi oldugunda aktif sayfayi tazeler.
+    let liveRefreshTimer = null;
+    let pageIsNavigating = false;
+
+    window.addEventListener('beforeunload', () => {
+      pageIsNavigating = true;
+    });
+
+    function scheduleLiveRefresh(delayMs = 250) {
+      if (pageIsNavigating) return;
+      if (liveRefreshTimer) {
+        clearTimeout(liveRefreshTimer);
+      }
+      liveRefreshTimer = setTimeout(() => {
+        window.location.reload();
+      }, delayMs);
+    }
+
+    socket.on('app:data-changed', (data) => {
+      console.log('Genel veri güncellemesi aldı:', data);
+      scheduleLiveRefresh();
+    });
     
     // Personel detay sayfası güncellemeleri
     socket.on('personnel:room-update', (data) => {

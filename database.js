@@ -419,7 +419,7 @@ function runMigrations() {
     console.log('Migration: personnel tablosuna tc_number_encrypted alanı eklendi');
     
     // Eski TC numaralarını şifrele
-    const oldPersonnel = db.prepare('SELECT id, tc_number FROM personnel WHERE tc_number IS NOT NULL AND tc_number != "" AND tc_number_encrypted IS NULL').all();
+    const oldPersonnel = db.prepare("SELECT id, tc_number FROM personnel WHERE tc_number IS NOT NULL AND tc_number != '' AND tc_number_encrypted IS NULL").all();
     if (oldPersonnel.length > 0) {
       const updateStmt = db.prepare('UPDATE personnel SET tc_number_encrypted = ? WHERE id = ?');
       for (const person of oldPersonnel) {
@@ -477,6 +477,17 @@ function runMigrations() {
   if (!hasTcLastFour) {
     db.exec('ALTER TABLE personnel ADD COLUMN tc_last_four TEXT');
     console.log('Migration: personnel tablosuna tc_last_four alanı eklendi');
+  }
+
+  db.exec('CREATE INDEX IF NOT EXISTS idx_personnel_tc_last_four ON personnel(tc_last_four)');
+
+  const hasTcLastFourData = db.prepare("SELECT COUNT(*) AS count FROM personnel WHERE tc_last_four IS NULL OR tc_last_four = ''").get();
+  if (hasTcLastFourData && hasTcLastFourData.count > 0 && hasTcNumber) {
+    const backfillTcLastFourStmt = db.prepare("UPDATE personnel SET tc_last_four = substr(tc_number, -4) WHERE (tc_last_four IS NULL OR tc_last_four = '') AND tc_number IS NOT NULL AND tc_number != ''");
+    const backfillResult = backfillTcLastFourStmt.run();
+    if (backfillResult && backfillResult.changes > 0) {
+      console.log(`Migration: ${backfillResult.changes} eski TC son 4 hane kaydı dolduruldu`);
+    }
   }
 
   const personnelTableSql = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='personnel'").get();

@@ -2,7 +2,15 @@
 
 <%
 const defaultDepartmentOptions = [
+  'Gece Denetimi',
   'Güvenlik',
+  'Steward',
+  'Bar',
+  'Restaurant',
+  'Houskeeping',
+  'Meydan',
+  'Önbüro',
+  'Satış Pazarlama',
   'Housekeeping',
   'Resepsiyon',
   'Ön Büro',
@@ -14,8 +22,7 @@ const defaultDepartmentOptions = [
   'İnsan Kaynakları',
   'Satış & Pazarlama',
   'Çamaşırhane',
-  'Bellboy',
-  'Gece Denetimi'
+  'Bellboy'
 ];
 const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...(person.department ? [person.department] : [])]))
   .sort((a, b) => a.localeCompare(b, 'tr'));
@@ -59,6 +66,9 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...(p
       <i class="bi bi-pencil"></i> Düzenle
     </button>
     <% if (person.status === 'aktif') { %>
+      <button class="btn btn-outline-warning btn-sm" data-bs-toggle="modal" data-bs-target="#changeRoomModal">
+        <i class="bi bi-arrow-left-right"></i> Oda Değiştir
+      </button>
       <button class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#checkoutModal">
         <i class="bi bi-box-arrow-right"></i> Çıkış Yap
       </button>
@@ -446,12 +456,16 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...(p
             </div>
             <div class="col-6">
               <label class="form-label">Departman</label>
-              <select class="form-select" name="department">
-                <option value="">Departman Seçin</option>
+              <% const editDepartmentValue = person.department || ''; %>
+              <% const editDepartmentInOptions = departmentOptions.includes(editDepartmentValue); %>
+              <select class="form-select" id="editDepartmentSelect">
+                <option value="">Departman seçin</option>
                 <% departmentOptions.forEach(dep => { %>
-                  <option value="<%= dep %>" <%= (person.department || '') === dep ? 'selected' : '' %>><%= dep %></option>
+                  <option value="<%= dep %>" <%= editDepartmentValue === dep ? 'selected' : '' %>><%= dep %></option>
                 <% }) %>
+                <option value="__manual__" <%= editDepartmentValue && !editDepartmentInOptions ? 'selected' : '' %>>El ile gir...</option>
               </select>
+              <input type="text" class="form-control mt-2 <%= editDepartmentValue && !editDepartmentInOptions ? '' : 'd-none' %>" id="editDepartmentInput" name="department" value="<%= editDepartmentValue && !editDepartmentInOptions ? editDepartmentValue : '' %>" placeholder="Departman yazın">
             </div>
           </div>
 
@@ -716,6 +730,24 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...(p
 <script id="roomAvailabilityMapData" type="application/json"><%- JSON.stringify(roomAvailabilityMap || {}) %></script>
 
 <script>
+// Open room change modal directly when coming from list shortcut
+(function() {
+  const modalEl = document.getElementById('changeRoomModal');
+  if (!modalEl || typeof window === 'undefined') return;
+
+  const params = new URLSearchParams(window.location.search || '');
+  if (params.get('openRoomModal') !== '1') return;
+
+  if (window.bootstrap && window.bootstrap.Modal) {
+    window.bootstrap.Modal.getOrCreateInstance(modalEl).show();
+  }
+
+  params.delete('openRoomModal');
+  const query = params.toString();
+  const nextUrl = `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash || ''}`;
+  window.history.replaceState({}, '', nextUrl);
+})();
+
 // Room availability guard for room change/assignment
 (function() {
   const roomAvailabilityRaw = document.getElementById('roomAvailabilityMapData');
@@ -884,6 +916,29 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...(p
 
   // Before submit: build payload + attach captured blob as photo
   const editForm = document.getElementById('editPersonnelForm');
+  const editDepartmentSelect = document.getElementById('editDepartmentSelect');
+  const editDepartmentInput = document.getElementById('editDepartmentInput');
+
+  function syncEditDepartmentField() {
+    if (!editDepartmentSelect || !editDepartmentInput) return;
+    const selected = editDepartmentSelect.value;
+    if (selected === '__manual__') {
+      editDepartmentInput.classList.remove('d-none');
+      if (!editDepartmentInput.value) {
+        editDepartmentInput.focus();
+      }
+      return;
+    }
+
+    editDepartmentInput.classList.add('d-none');
+    editDepartmentInput.value = selected || '';
+  }
+
+  if (editDepartmentSelect && editDepartmentInput) {
+    editDepartmentSelect.addEventListener('change', syncEditDepartmentField);
+    syncEditDepartmentField();
+  }
+
   if (editForm) {
     editForm.addEventListener('submit', function(e) {
       // If captured via camera, attach as "photo" file
@@ -1102,6 +1157,8 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...(p
   const payloadInput = document.getElementById('reassignHandoverPayloadInput');
   if (!reassignForm || !roomSelect || !section || !itemsContainer || !payloadInput) return;
 
+  let pendingIssueResolution = null;
+
   function normalizeName(name) {
     return String(name || '').trim().toLocaleLowerCase('tr-TR');
   }
@@ -1202,10 +1259,12 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...(p
       section.style.display = 'block';
       renderReassignItems(roomSelect.value);
       applyReassignIssueDefaults(roomSelect.value);
+      pendingIssueResolution = null;
     } else {
       section.style.display = 'none';
       payloadInput.value = '';
       itemsContainer.innerHTML = '';
+      pendingIssueResolution = null;
     }
   }
 
@@ -1241,21 +1300,42 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...(p
         return;
       }
 
+      pendingIssueResolution = { roomId: roomSelect.value, itemName };
       resolveRoomIssueInBackground(roomSelect.value, itemName)
         .then(() => {
-          const roomIssues = roomOpenIssueMap[String(roomSelect.value)] || {};
-          delete roomIssues[normalizeName(itemName)];
-          roomOpenIssueMap[String(roomSelect.value)] = roomIssues;
-          if (problem) problem.style.display = 'none';
-          const tag = item ? item.querySelector('.reassign-tag') : null;
-          const desc = item ? item.querySelector('.reassign-description') : null;
-          if (tag) tag.value = '';
-          if (desc) desc.value = '';
+          if (!pendingIssueResolution || pendingIssueResolution.roomId !== roomSelect.value) {
+            console.log('Ignoring stale issue resolution (room changed)');
+            return;
+          }
+          try {
+            const roomIssues = roomOpenIssueMap[String(roomSelect.value)] || {};
+            delete roomIssues[normalizeName(itemName)];
+            roomOpenIssueMap[String(roomSelect.value)] = roomIssues;
+            if (problem) problem.style.display = 'none';
+            const tag = item ? item.querySelector('.reassign-tag') : null;
+            const desc = item ? item.querySelector('.reassign-description') : null;
+            if (tag) tag.value = '';
+            if (desc) desc.value = '';
+          } catch (domErr) {
+            console.error('Sorun kaydı çöz sonrası UI güncelleme hatası:', domErr);
+          }
+          pendingIssueResolution = null;
         })
         .catch((err) => {
-          alert(err.message || 'Sorun kaydı çözümlenirken hata oluştu.');
-          if (noRadio) noRadio.checked = true;
-          if (problem) problem.style.display = 'block';
+          if (!pendingIssueResolution || pendingIssueResolution.roomId !== roomSelect.value) {
+            console.log('Ignoring stale issue resolution error (room changed)');
+            pendingIssueResolution = null;
+            return;
+          }
+          try {
+            if (noRadio && noRadio !== t) noRadio.checked = true;
+            if (problem) problem.style.display = 'block';
+            alert(err.message || 'Sorun kaydı çözümlenirken hata oluştu.');
+          } catch (cleanupErr) {
+            console.error('Error cleanup failed:', cleanupErr);
+            alert('Sorun kaydı çözümlenirken hata oluştu.');
+          }
+          pendingIssueResolution = null;
         });
     }
   });

@@ -39,6 +39,47 @@ function validateRoomAssignmentAvailability(room, allowCleaningOverride = false)
   return { ok: true };
 }
 
+function getTcDuplicateCandidates(normalizedTc, excludePersonnelId = null) {
+  const tcLastFour = String(normalizedTc || '').trim().slice(-4);
+  if (!tcLastFour) return [];
+
+  if (excludePersonnelId) {
+    return db.prepare(
+      'SELECT id, tc_number_encrypted FROM personnel WHERE id != ? AND tc_last_four = ? AND tc_number_encrypted IS NOT NULL'
+    ).all(excludePersonnelId, tcLastFour);
+  }
+
+  return db.prepare(
+    'SELECT id, tc_number_encrypted FROM personnel WHERE tc_last_four = ? AND tc_number_encrypted IS NOT NULL'
+  ).all(tcLastFour);
+}
+
+async function findDuplicatePersonnelByTc(normalizedTc, excludePersonnelId = null) {
+  const candidates = getTcDuplicateCandidates(normalizedTc, excludePersonnelId);
+  let fallbackCandidates = candidates;
+
+  if (fallbackCandidates.length === 0) {
+    const statement = db.prepare(
+      excludePersonnelId
+        ? 'SELECT id, tc_number_encrypted FROM personnel WHERE id != ? AND tc_number_encrypted IS NOT NULL'
+        : 'SELECT id, tc_number_encrypted FROM personnel WHERE tc_number_encrypted IS NOT NULL'
+    );
+
+    fallbackCandidates = excludePersonnelId
+      ? statement.all(excludePersonnelId)
+      : statement.all();
+  }
+
+  for (const person of fallbackCandidates) {
+    const isMatch = await verifyTcNumber(normalizedTc, person.tc_number_encrypted);
+    if (isMatch) {
+      return person;
+    }
+  }
+
+  return null;
+}
+
 function getRoomKeyLimit(roomId, fallbackLimit = 0) {
   const keyRow = db.prepare("SELECT max_quantity, quantity FROM room_inventory WHERE room_id = ? AND LOWER(item_name) = LOWER('Oda Anahtarı')").get(roomId);
   if (!keyRow) return Math.max(MIN_ROOM_KEY_COUNT, Number(fallbackLimit || 0));
@@ -567,16 +608,8 @@ router.post('/ekle', async (req, res) => {
     }
 
   // TC numarası kontrolü - tüm personelleri getir ve şifreli TC ile eşleştir
-    const allPersonnelWithTc = db.prepare('SELECT id, tc_number_encrypted FROM personnel WHERE tc_number_encrypted IS NOT NULL').all();
-    let existingPerson = null;
-    
-    for (const person of allPersonnelWithTc) {
-      const isMatch = await verifyTcNumber(normalizedTc, person.tc_number_encrypted);
-      if (isMatch) {
-        existingPerson = db.prepare('SELECT * FROM personnel WHERE id = ?').get(person.id);
-        break;
-      }
-    }
+    const duplicatePerson = await findDuplicatePersonnelByTc(normalizedTc);
+    const existingPerson = duplicatePerson ? db.prepare('SELECT * FROM personnel WHERE id = ?').get(duplicatePerson.id) : null;
 
   // Mevcut kimse varsa ve action belirtilmediyse, o kişinin bilgilerini gönder
     if (existingPerson && !action) {
@@ -769,16 +802,7 @@ router.post('/ekle-ve-ata', async (req, res) => {
   }
 
   // TC duplicate kontrolü - şifreli versiyonlarla karşılaştır
-  const allPersonnelWithTc = db.prepare('SELECT id, tc_number_encrypted FROM personnel WHERE tc_number_encrypted IS NOT NULL').all();
-  let existingPerson = null;
-  
-  for (const person of allPersonnelWithTc) {
-    const isMatch = await verifyTcNumber(normalizedTc, person.tc_number_encrypted);
-    if (isMatch) {
-      existingPerson = person;
-      break;
-    }
-  }
+  const existingPerson = await findDuplicatePersonnelByTc(normalizedTc);
 
   if (existingPerson) {
     return res.redirect(`/odalar/${parsedRoomId}?error=` + encodeURIComponent('Bu kişi zaten sistemde kayıtlıdır.'));
@@ -1065,16 +1089,7 @@ router.post('/:id/guncelle', upload.single('photo'), async (req, res) => {
     }
 
     // TC duplicate kontrolü - diğer personelleri kontrol et (şu anki kişi hariç)
-    const otherPersonnelWithTc = db.prepare('SELECT id, tc_number_encrypted FROM personnel WHERE id != ? AND tc_number_encrypted IS NOT NULL').all(req.params.id);
-    let duplicateFound = false;
-
-    for (const otherPerson of otherPersonnelWithTc) {
-      const isMatch = await verifyTcNumber(normalizedTc, otherPerson.tc_number_encrypted);
-      if (isMatch) {
-        duplicateFound = true;
-        break;
-      }
-    }
+    const duplicateFound = await findDuplicatePersonnelByTc(normalizedTc, req.params.id);
 
     if (duplicateFound) {
       if (req.file) {
@@ -1142,9 +1157,20 @@ router.post('/:id/oda-degistir', (req, res) => {
   const person = db.prepare('SELECT p.*, r.room_number as old_room FROM personnel p LEFT JOIN rooms r ON p.room_id = r.id WHERE p.id = ?').get(req.params.id);
   if (!person) return res.redirect('/personel');
 
+  const rawUserId = req.session && req.session.user ? req.session.user.id : null;
+  const actorUser = rawUserId ? db.prepare('SELECT id FROM users WHERE id = ?').get(rawUserId) : null;
+  const safeUserId = actorUser ? actorUser.id : null;
+
   const oldRoomId = person.room_id;
   const parsedNewRoomId = new_room_id ? parseInt(new_room_id) : null;
   const roomChanged = oldRoomId !== parsedNewRoomId;
+  let parsedPayload = null;
+
+  try {
+    parsedPayload = reassign_handover_payload ? JSON.parse(reassign_handover_payload) : null;
+  } catch (_) {
+    parsedPayload = null;
+  }
 
   if (parsedNewRoomId) {
     const roomExists = db.prepare('SELECT * FROM rooms WHERE id = ?').get(parsedNewRoomId);
@@ -1167,13 +1193,6 @@ router.post('/:id/oda-degistir', (req, res) => {
     const isFormSigned = reassign_form_signed === '1';
     if (!isFormSigned) {
       return res.status(400).send('Yeniden oda tahsisi için zimmet formu zorunludur.');
-    }
-
-    let parsedPayload = null;
-    try {
-      parsedPayload = reassign_handover_payload ? JSON.parse(reassign_handover_payload) : null;
-    } catch (_) {
-      parsedPayload = null;
     }
 
     const payloadItems = parsedPayload && Array.isArray(parsedPayload.items) ? parsedPayload.items : [];
@@ -1262,9 +1281,6 @@ router.post('/:id/oda-degistir', (req, res) => {
   }
 
   const newRoom = parsedNewRoomId ? db.prepare('SELECT room_number FROM rooms WHERE id = ?').get(parsedNewRoomId) : null;
-  const rawUserId = req.session && req.session.user ? req.session.user.id : null;
-  const actorUser = rawUserId ? db.prepare('SELECT id FROM users WHERE id = ?').get(rawUserId) : null;
-  const safeUserId = actorUser ? actorUser.id : null;
   logActivity('oda_degisikligi', `${person.first_name} ${person.last_name} - Oda: ${person.old_room || 'Yok'} → ${newRoom ? newRoom.room_number : 'Yok'}`, null, safeUserId);
 
   if (person.status === 'cikis_yapti' && parsedNewRoomId) {

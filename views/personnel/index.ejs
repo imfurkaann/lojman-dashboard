@@ -2,20 +2,24 @@
 
 <%
 const defaultDepartmentOptions = [
+  'Gece Denetimi',
   'Güvenlik',
+  'Steward',
+  'Bar',
+  'Restaurant',
+  'Meydan',
+  'Satış Pazarlama',
   'Housekeeping',
-  'Resepsiyon',
   'Ön Büro',
   'Teknik Servis',
-  'Kat Hizmetleri',
-  'Yiyecek & İçecek',
   'Mutfak',
   'Muhasebe',
   'İnsan Kaynakları',
   'Satış & Pazarlama',
   'Çamaşırhane',
-  'Bellboy',
-  'Gece Denetimi'
+  'Cankurtaran',
+  'Kidsclup',
+  'Yönetim'
 ];
 const dynamicDepartmentOptions = (departments || []).map(d => d.department).filter(Boolean);
 const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dynamicDepartmentOptions]))
@@ -207,7 +211,14 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
                 <span class="badge bg-secondary">Çıkış Yapmış</span>
               <% } %>
             </td>
-            <td><a href="/personel/<%= p.id %>" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a></td>
+            <td class="text-nowrap">
+              <a href="/personel/<%= p.id %>" class="btn btn-sm btn-outline-primary" title="Detay">
+                <i class="bi bi-eye"></i>
+              </a>
+              <a href="/personel/<%= p.id %>?openRoomModal=1" class="btn btn-sm btn-outline-warning" title="Oda Değiştir">
+                <i class="bi bi-arrow-left-right"></i>
+              </a>
+            </td>
           </tr>
           <% }) %>
         </tbody>
@@ -258,12 +269,14 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
             </div>
             <div class="col-6">
               <label class="form-label">Departman</label>
-              <select class="form-select" name="department">
-                <option value="">Departman Seçin</option>
+              <select class="form-select" id="addDepartmentSelect">
+                <option value="">Departman seçin</option>
                 <% departmentOptions.forEach(dep => { %>
                   <option value="<%= dep %>"><%= dep %></option>
                 <% }) %>
+                <option value="__manual__">El ile gir...</option>
               </select>
+              <input type="text" class="form-control mt-2 d-none" id="addDepartmentInput" name="department" placeholder="Departman yazın">
             </div>
           </div>
           <div class="mb-3 mt-3">
@@ -698,6 +711,28 @@ if (addPersonnelModalEl) {
     }
     if (cameraPreview) cameraPreview.style.display = 'block';
   });
+}
+
+const addDepartmentSelect = document.getElementById('addDepartmentSelect');
+const addDepartmentInput = document.getElementById('addDepartmentInput');
+
+function syncAddDepartmentField() {
+  if (!addDepartmentSelect || !addDepartmentInput) return;
+  const selected = addDepartmentSelect.value;
+  if (selected === '__manual__') {
+    addDepartmentInput.classList.remove('d-none');
+    addDepartmentInput.value = '';
+    addDepartmentInput.focus();
+    return;
+  }
+
+  addDepartmentInput.classList.add('d-none');
+  addDepartmentInput.value = selected || '';
+}
+
+if (addDepartmentSelect && addDepartmentInput) {
+  addDepartmentSelect.addEventListener('change', syncAddDepartmentField);
+  syncAddDepartmentField();
 }
 
 function getRequiredKeyCountByRoomId(roomId) {

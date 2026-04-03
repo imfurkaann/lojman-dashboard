@@ -2,7 +2,15 @@
 
 <%
 const defaultDepartmentOptions = [
+  'Gece Denetimi',
   'Güvenlik',
+  'Steward',
+  'Bar',
+  'Restaurant',
+  'Houskeeping',
+  'Meydan',
+  'Önbüro',
+  'Satış Pazarlama',
   'Housekeeping',
   'Resepsiyon',
   'Ön Büro',
@@ -14,8 +22,7 @@ const defaultDepartmentOptions = [
   'İnsan Kaynakları',
   'Satış & Pazarlama',
   'Çamaşırhane',
-  'Bellboy',
-  'Gece Denetimi'
+  'Bellboy'
 ];
 const dynamicDepartmentOptions = (departments || []).map(d => d.department).filter(Boolean);
 const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dynamicDepartmentOptions]))
@@ -581,12 +588,14 @@ const roomAvailability = room.availability_status || 'musait';
           <div class="row">
             <div class="col-md-6 mb-3">
               <label class="form-label">Departman</label>
-              <select class="form-select" name="department">
-                <option value="">Departman Seçin</option>
+              <select class="form-select" id="roomDepartmentSelect">
+                <option value="">Departman seçin</option>
                 <% departmentOptions.forEach(dep => { %>
                   <option value="<%= dep %>"><%= dep %></option>
                 <% }) %>
+                <option value="__manual__">El ile gir...</option>
               </select>
+              <input type="text" class="form-control mt-2 d-none" id="roomDepartmentInput" name="department" placeholder="Departman yazın">
             </div>
             <div class="col-md-6 mb-3">
               <label class="form-label">TC Kimlik No *</label>
@@ -1100,6 +1109,27 @@ document.addEventListener('DOMContentLoaded', function () {
     const personnelItems = Array.from(personnelListContainer.querySelectorAll('tbody tr'));
     const currentRoomId = <%- JSON.stringify(Number(room.id)) %>;
     const inventoryIssuesData = <%- JSON.stringify(inventoryIssues || []) %>;
+    const roomDepartmentSelect = document.getElementById('roomDepartmentSelect');
+    const roomDepartmentInput = document.getElementById('roomDepartmentInput');
+
+    function syncRoomDepartmentField() {
+      if (!roomDepartmentSelect || !roomDepartmentInput) return;
+      const selected = roomDepartmentSelect.value;
+      if (selected === '__manual__') {
+        roomDepartmentInput.classList.remove('d-none');
+        roomDepartmentInput.value = '';
+        roomDepartmentInput.focus();
+        return;
+      }
+
+      roomDepartmentInput.classList.add('d-none');
+      roomDepartmentInput.value = selected || '';
+    }
+
+    if (roomDepartmentSelect && roomDepartmentInput) {
+      roomDepartmentSelect.addEventListener('change', syncRoomDepartmentField);
+      syncRoomDepartmentField();
+    }
 
     const historySearchInput = document.getElementById('historySearchInput');
     const historyEntryRange = document.getElementById('historyEntryRange');
