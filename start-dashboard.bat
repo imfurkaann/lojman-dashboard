@@ -31,7 +31,7 @@ if "%ERRORLEVEL%"=="1" (
     start "" "C:\Program Files\Docker\Docker\Docker Desktop.exe"
     
     echo [*] Please wait...
-    timeout /t 3 /nobreak
+    timeout /t 3 /nobreak >NUL
     
     for /L %%i in (1,1,60) do (
         docker ps >NUL 2>&1
@@ -39,7 +39,7 @@ if "%ERRORLEVEL%"=="1" (
             echo [OK] Docker ready!
             goto docker_ready
         )
-        timeout /t 1 /nobreak
+        timeout /t 1 /nobreak >NUL
     )
     
     echo [ERROR] Docker startup failed. Please start it manually.
@@ -74,17 +74,30 @@ echo.
 cd /d "%~dp0"
 set "PORT=!APP_PORT!"
 docker compose up -d
+if not "%ERRORLEVEL%"=="0" (
+    echo [ERROR] docker compose up failed.
+    echo [INFO] Last container logs:
+    docker compose logs --tail 80
+    pause
+    exit /b 1
+)
 
 echo [*] Waiting for application to start...
 set "max_wait=30"
 for /L %%i in (1,1,%max_wait%) do (
-    timeout /t 1 /nobreak
-    curl -s http://localhost:!APP_PORT! >NUL 2>&1
+    timeout /t 1 /nobreak >NUL
+    powershell -NoProfile -Command "try { $r = Invoke-WebRequest -UseBasicParsing -Uri 'http://localhost:!APP_PORT!/dashboard' -TimeoutSec 2; if ($r.StatusCode -ge 200 -and $r.StatusCode -lt 500) { exit 0 } else { exit 1 } } catch { exit 1 }"
     if !ERRORLEVEL! equ 0 (
         echo [OK] Application ready!
         goto app_ready
     )
 )
+
+echo [ERROR] Application did not become ready within %max_wait% seconds.
+echo [INFO] Last container logs:
+docker compose logs --tail 80
+pause
+exit /b 1
 
 :app_ready
 echo.
@@ -96,5 +109,5 @@ echo Address: http://localhost:!APP_PORT!
 echo.
 
 start "" "http://localhost:!APP_PORT!"
-timeout /t 2 /nobreak
+timeout /t 2 /nobreak >NUL
 exit /b 0
