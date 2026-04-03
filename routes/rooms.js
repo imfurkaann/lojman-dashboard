@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const { db, logActivity, updateRoomStatus, syncRoomKeyStock, recordRoomEntry } = require('../database');
 const MIN_ROOM_KEY_COUNT = 0;
+const { encryptTcNumber, createTcFingerprint, verifyTcNumber } = require('../middleware/tc-encryption');
 
 // Fotoğraf yükleme ayarları
 const uploadDir = path.join(__dirname, '..', 'public', 'uploads', 'personnel');
@@ -332,13 +333,14 @@ router.get('/', (req, res) => {
 router.post('/', (req, res) => {
   const { room_number, capacity, floor, description, is_storage } = req.body;
   const status = is_storage ? 'depo' : 'bos';
+  const safeUserId = getSafeUserId(req);
   
   try {
     const insertResult = db.prepare('INSERT INTO rooms (room_number, capacity, floor, description, status) VALUES (?, ?, ?, ?, ?)').run(parseInt(room_number), parseInt(capacity) || 1, floor || null, description || null, status);
     if (!is_storage) {
-      addDefaultInventoryToRoom(insertResult.lastInsertRowid, parseInt(room_number), req.session.user.id);
+      addDefaultInventoryToRoom(insertResult.lastInsertRowid, parseInt(room_number), safeUserId);
     }
-    logActivity('oda_eklendi', `${room_number} numaralı oda eklendi`, `Kapasite: ${capacity}, Kat: ${floor || '-'}${is_storage ? ', Depo' : ''}`, req.session.user.id);
+    logActivity('oda_eklendi', `${room_number} numaralı oda eklendi`, `Kapasite: ${capacity}, Kat: ${floor || '-'}${is_storage ? ', Depo' : ''}`, safeUserId);
     res.redirect('/odalar');
   } catch (e) {
     res.redirect('/odalar?error=Bu oda numarası zaten mevcut');
@@ -408,7 +410,6 @@ router.get('/:id', (req, res) => {
       h.personnel_id,
       h.first_name,
       h.last_name,
-      h.tc_number,
       h.department,
       h.entry_at,
       h.exit_at
@@ -540,14 +541,16 @@ router.post('/:id/personel-ata', (req, res) => {
 // Oda güncelle
 router.post('/:id/guncelle', (req, res) => {
   const { capacity, floor, description, status } = req.body;
+  const safeUserId = getSafeUserId(req);
   db.prepare('UPDATE rooms SET capacity = ?, floor = ?, description = ?, status = ? WHERE id = ?').run(parseInt(capacity) || 1, floor || null, description || null, status, req.params.id);
   const room = db.prepare('SELECT room_number FROM rooms WHERE id = ?').get(req.params.id);
-  logActivity('oda_guncellendi', `${room.room_number} numaralı oda güncellendi`, null, req.session.user.id);
+  logActivity('oda_guncellendi', `${room.room_number} numaralı oda güncellendi`, null, safeUserId);
   res.redirect(`/odalar/${req.params.id}`);
 });
 
 router.post('/:id/musaitlik-guncelle', (req, res) => {
   const roomId = Number.parseInt(req.params.id, 10);
+  const safeUserId = getSafeUserId(req);
   const room = db.prepare('SELECT id, room_number, availability_status FROM rooms WHERE id = ?').get(roomId);
   if (!room) return res.redirect('/odalar');
 
@@ -558,7 +561,7 @@ router.post('/:id/musaitlik-guncelle', (req, res) => {
     'oda_musaitlik_guncellendi',
     `${room.room_number} numaralı odanın müsaitlik durumu güncellendi`,
     `Eski: ${room.availability_status || 'musait'} | Yeni: ${nextAvailability}`,
-    req.session.user.id
+    safeUserId
   );
 
   res.redirect(`/odalar/${roomId}`);
@@ -566,18 +569,39 @@ router.post('/:id/musaitlik-guncelle', (req, res) => {
 
 // Oda sil
 router.post('/:id/sil', (req, res) => {
-  const room = db.prepare('SELECT * FROM rooms WHERE id = ?').get(req.params.id);
+  const safeUserId = getSafeUserId(req);
+  const roomId = Number.parseInt(req.params.id, 10);
+  const room = db.prepare('SELECT * FROM rooms WHERE id = ?').get(roomId);
   if (!room) return res.redirect('/odalar');
   
-  const occupants = db.prepare("SELECT COUNT(*) as count FROM personnel WHERE room_id = ? AND status = 'aktif'").get(req.params.id);
+  const occupants = db.prepare("SELECT COUNT(*) as count FROM personnel WHERE room_id = ? AND status = 'aktif'").get(roomId);
   if (occupants.count > 0) {
     return res.redirect(`/odalar/${req.params.id}?error=Odada personel var, önce personelleri çıkarın`);
   }
 
-  db.prepare('DELETE FROM room_issues WHERE room_id = ?').run(req.params.id);
-  db.prepare('DELETE FROM room_inventory WHERE room_id = ?').run(req.params.id);
-  db.prepare('DELETE FROM rooms WHERE id = ?').run(req.params.id);
-  logActivity('oda_silindi', `${room.room_number} numaralı oda silindi`, null, req.session.user.id);
+  try {
+    const removeRoomTx = db.transaction((id) => {
+      // Odaya bağlı geçmiş/yardımcı kayıtları temizle
+      db.prepare('DELETE FROM room_issues WHERE room_id = ?').run(id);
+      db.prepare('DELETE FROM room_inventory WHERE room_id = ?').run(id);
+      db.prepare('DELETE FROM room_stay_history WHERE room_id = ?').run(id);
+      db.prepare('DELETE FROM personnel_inventory WHERE room_id = ?').run(id);
+      db.prepare('DELETE FROM handover_forms WHERE room_id = ?').run(id);
+      db.prepare('DELETE FROM inventory_mutations WHERE room_id = ?').run(id);
+
+      // Beklenmedik legacy kayıtlarda FK ihlali olmaması için room_id referanslarını temizle
+      db.prepare('UPDATE personnel SET room_id = NULL WHERE room_id = ?').run(id);
+
+      db.prepare('DELETE FROM rooms WHERE id = ?').run(id);
+    });
+
+    removeRoomTx(roomId);
+  } catch (error) {
+    console.error('Oda silme hatası:', error);
+    return res.redirect(`/odalar/${roomId}?error=${encodeURIComponent('Oda silinemedi. Odaya bağlı kayıtlar nedeniyle işlem engellendi.')}`);
+  }
+
+  logActivity('oda_silindi', `${room.room_number} numaralı oda silindi`, null, safeUserId);
   res.redirect('/odalar');
 });
 
@@ -687,6 +711,7 @@ router.post('/:id/demirbas-sorun-coz', (req, res) => {
 
 // Sorun durumu güncelle
 router.post('/:id/sorun/:issueId/guncelle', (req, res) => {
+  const safeUserId = getSafeUserId(req);
   const { status } = req.body;
   const issue = db.prepare('SELECT * FROM room_issues WHERE id = ? AND room_id = ?').get(req.params.issueId, req.params.id);
   if (!issue) return res.redirect(`/odalar/${req.params.id}`);
@@ -703,13 +728,14 @@ router.post('/:id/sorun/:issueId/guncelle', (req, res) => {
   }
 
   const room = db.prepare('SELECT room_number FROM rooms WHERE id = ?').get(req.params.id);
-  logActivity('sorun_guncellendi', `${room.room_number} odasında sorun durumu güncellendi`, `Yeni durum: ${normalizedStatus}`, req.session.user.id);
+  logActivity('sorun_guncellendi', `${room.room_number} odasında sorun durumu güncellendi`, `Yeni durum: ${normalizedStatus}`, safeUserId);
   emitReportRefresh(req, req.params.id);
   res.redirect(`/odalar/${req.params.id}`);
 });
 
 // Sorun sil
 router.post('/:id/sorun/:issueId/sil', (req, res) => {
+  const safeUserId = getSafeUserId(req);
   const issue = db.prepare('SELECT * FROM room_issues WHERE id = ? AND room_id = ?').get(req.params.issueId, req.params.id);
   if (!issue) return res.redirect(`/odalar/${req.params.id}`);
 
@@ -720,7 +746,7 @@ router.post('/:id/sorun/:issueId/sil', (req, res) => {
   }
 
   const room = db.prepare('SELECT room_number FROM rooms WHERE id = ?').get(req.params.id);
-  logActivity('sorun_silindi', `${room.room_number} odasında sorun silindi`, issue.title || null, req.session.user.id);
+  logActivity('sorun_silindi', `${room.room_number} odasında sorun silindi`, issue.title || null, safeUserId);
   emitReportRefresh(req, req.params.id);
   res.redirect(`/odalar/${req.params.id}`);
 });
@@ -769,11 +795,12 @@ router.post('/:id/envanter/:itemId/guncelle', (req, res) => {
 
 // Demirbaş sil
 router.post('/:id/envanter/:itemId/sil', (req, res) => {
+  const safeUserId = getSafeUserId(req);
   const item = db.prepare('SELECT item_name FROM room_inventory WHERE id = ?').get(req.params.itemId);
   db.prepare('DELETE FROM room_inventory WHERE id = ?').run(req.params.itemId);
   const room = db.prepare('SELECT room_number FROM rooms WHERE id = ?').get(req.params.id);
   if (item) {
-    logActivity('envanter_silindi', `${room.room_number} odasından eşya silindi: ${item.item_name}`, null, req.session.user.id);
+    logActivity('envanter_silindi', `${room.room_number} odasından eşya silindi: ${item.item_name}`, null, safeUserId);
   }
   emitReportRefresh(req, req.params.id);
   res.redirect(`/odalar/${req.params.id}`);
@@ -812,7 +839,7 @@ router.post('/:id/envanter/:itemId/eksik', (req, res) => {
 });
 
 // Odaya personel ekle
-router.post('/:id/personel-ekle', upload.single('photo'), (req, res) => {
+router.post('/:id/personel-ekle', upload.single('photo'), async (req, res) => {
   const { first_name, last_name, gender, phone, department, tc_number, form_signed, handover_payload, key_delivered, action, allow_cleaning_override } = req.body;
   const safeUserId = getSafeUserId(req);
   const normalizedTc = (tc_number || '').trim();
@@ -826,6 +853,7 @@ router.post('/:id/personel-ekle', upload.single('photo'), (req, res) => {
 
   const photoPath = req.file ? `/uploads/personnel/${req.file.filename}` : null;
   const isFormSigned = form_signed === 'on' ? 1 : 0;
+  const tcFingerprint = createTcFingerprint(normalizedTc);
 
   // TC kimlik numarası zorunludur
   if (!normalizedTc) {
@@ -837,9 +865,21 @@ router.post('/:id/personel-ekle', upload.single('photo'), (req, res) => {
     return res.status(400).send('TC kimlik no zorunludur.');
   }
 
-  // TC numarası kontrolü (tum personellerde)
+  // TC numarası kontrolü (hızlı fingerprint eşleşmesi)
   let existingPerson = null;
-  existingPerson = db.prepare('SELECT * FROM personnel WHERE tc_number = ?').get(normalizedTc);
+  if (tcFingerprint) {
+    existingPerson = db.prepare('SELECT * FROM personnel WHERE tc_number_fingerprint = ?').get(tcFingerprint);
+  }
+
+  if (!existingPerson) {
+    const legacyEncryptedRows = db.prepare("SELECT id, tc_number_encrypted FROM personnel WHERE (tc_number_fingerprint IS NULL OR tc_number_fingerprint = '') AND tc_number_encrypted IS NOT NULL").all();
+    for (const candidate of legacyEncryptedRows) {
+      if (await verifyTcNumber(normalizedTc, candidate.tc_number_encrypted)) {
+        existingPerson = db.prepare('SELECT * FROM personnel WHERE id = ?').get(candidate.id);
+        break;
+      }
+    }
+  }
 
   // Mevcut kimse varsa ve action belirtilmediyse, o kişinin bilgilerini gönder
   if (existingPerson && !action) {
@@ -865,13 +905,14 @@ router.post('/:id/personel-ekle', upload.single('photo'), (req, res) => {
       return res.status(400).send('Bu oda kapasitesini doldurmuştur.');
     }
     const keyDeliveredValue = key_delivered === '1' ? 1 : 0;
-    db.prepare('UPDATE personnel SET first_name = ?, last_name = ?, gender = ?, phone = ?, department = ?, room_id = ?, status = ?, check_in_date = ?, photo_path = ?, form_signed = ? WHERE id = ?').run(
-      first_name, last_name, gender, phone || null, department || null, req.params.id, 'aktif', new Date().toISOString(), photoPath || existingPerson.photo_path, isFormSigned, existingPerson.id
+    const encryptedTc = await encryptTcNumber(normalizedTc);
+    db.prepare('UPDATE personnel SET first_name = ?, last_name = ?, gender = ?, phone = ?, department = ?, room_id = ?, status = ?, check_in_date = ?, photo_path = ?, form_signed = ?, tc_number_encrypted = ?, tc_number_fingerprint = ?, tc_last_four = ? WHERE id = ?').run(
+      first_name, last_name, gender, phone || null, department || null, req.params.id, 'aktif', new Date().toISOString(), photoPath || existingPerson.photo_path, isFormSigned, encryptedTc, tcFingerprint, normalizedTc.slice(-4), existingPerson.id
     );
     db.prepare('UPDATE personnel SET key_delivered = ?, checkout_key_returned = NULL WHERE id = ?').run(keyDeliveredValue, existingPerson.id);
     db.prepare('UPDATE personnel SET checkout_room_id = NULL WHERE id = ?').run(existingPerson.id);
     [previousRoomId, Number(req.params.id)].filter(Boolean).forEach(syncRoomKeyStock);
-    logActivity('personel_guncellendi', `${first_name} ${last_name} (TC: ${tc_number}) verilerine dayalı güncellendi - ${room.room_number}`, `Departman: ${department || '-'}`, safeUserId);
+    logActivity('personel_guncellendi', `${first_name} ${last_name} verilerine dayalı güncellendi - ${room.room_number}`, `Departman: ${department || '-'}`, safeUserId);
     if (handover_payload) {
       db.prepare('UPDATE personnel SET entry_handover_payload = ? WHERE id = ?').run(handover_payload, existingPerson.id);
     }
@@ -888,8 +929,9 @@ router.post('/:id/personel-ekle', upload.single('photo'), (req, res) => {
       return res.status(400).send('Bu oda kapasitesini doldurmuştur.');
     }
     const keyDeliveredValue = key_delivered === '1' ? 1 : 0;
-    const result = db.prepare('INSERT INTO personnel (first_name, last_name, gender, phone, department, room_id, status, tc_number, photo_path, form_signed, entry_handover_payload, key_delivered, check_in_date, added_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
-      first_name, last_name, gender, phone || null, department || null, req.params.id, 'aktif', normalizedTc, photoPath, isFormSigned, handover_payload || null, keyDeliveredValue, new Date().toISOString(), safeUserId
+    const encryptedTc = await encryptTcNumber(normalizedTc);
+    const result = db.prepare('INSERT INTO personnel (first_name, last_name, gender, phone, department, room_id, status, tc_number_encrypted, tc_number_fingerprint, tc_last_four, photo_path, form_signed, entry_handover_payload, key_delivered, check_in_date, added_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
+      first_name, last_name, gender, phone || null, department || null, req.params.id, 'aktif', encryptedTc, tcFingerprint, normalizedTc.slice(-4), photoPath, isFormSigned, handover_payload || null, keyDeliveredValue, new Date().toISOString(), safeUserId
     );
   }
 

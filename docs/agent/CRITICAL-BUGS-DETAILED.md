@@ -1,5 +1,12 @@
 # 🚨 KRITIK VE YÜKSEK ÖNCELİKLİ HATALAR - DETAYLI REHBER
 
+**Version**: 2.0  
+**Last Updated**: April 3, 2026  
+**Related Files**: ERROR-RESOLUTION-CHECKLIST.md, TEST-VALIDATION-MATRIX.md, copilot-instructions.md  
+**Entry Point**: docs/agent/INDEX.md → This file
+
+---
+
 ## P0.1: req.session.user Hardcode Sorunu ⚠️ BLOCK
 
 ### Sorun Tanımı

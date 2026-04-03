@@ -215,9 +215,6 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
               <a href="/personel/<%= p.id %>" class="btn btn-sm btn-outline-primary" title="Detay">
                 <i class="bi bi-eye"></i>
               </a>
-              <a href="/personel/<%= p.id %>?openRoomModal=1" class="btn btn-sm btn-outline-warning" title="Oda Değiştir">
-                <i class="bi bi-arrow-left-right"></i>
-              </a>
             </td>
           </tr>
           <% }) %>
@@ -238,6 +235,18 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body" style="max-height: 600px; overflow-y: auto;">
+          <div id="duplicateInlineAlert" class="alert alert-warning d-none" role="alert">
+            <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+              <div>
+                <strong>Bu kişi sistemde zaten kayıtlı.</strong>
+                <div class="small mt-1" id="duplicateInlineSummary">Kayıt bilgileri bulundu.</div>
+              </div>
+              <button type="button" class="btn btn-sm btn-primary" id="openExistingPersonInlineBtn">
+                <i class="bi bi-person-check"></i> Kaydı Aç
+              </button>
+            </div>
+          </div>
+
           <div class="row g-3">
             <div class="col-6">
               <label class="form-label">Ad *</label>
@@ -699,6 +708,85 @@ if (chooseCameraBtn) {
 
 // If modal closes while camera is on, stop tracks
 const addPersonnelModalEl = document.getElementById('addPersonnelModal');
+
+function showDuplicateInlineAlert(person) {
+  const alertEl = document.getElementById('duplicateInlineAlert');
+  const summaryEl = document.getElementById('duplicateInlineSummary');
+  const openBtn = document.getElementById('openExistingPersonInlineBtn');
+
+  if (!alertEl || !summaryEl || !openBtn || !person) return;
+
+  const fullName = `${person.first_name || ''} ${person.last_name || ''}`.trim() || 'İsimsiz Personel';
+  const dept = person.department || '-';
+  const phone = person.phone || '-';
+  summaryEl.textContent = `${fullName} | Departman: ${dept} | Telefon: ${phone}`;
+
+  openBtn.onclick = function() {
+    window.location.href = `/personel/${person.id}`;
+  };
+
+  alertEl.classList.remove('d-none');
+  alertEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// Personel kaydını forma yükle ve edit moduna geç
+function loadPersonnelToEditForm(person) {
+  const form = document.querySelector('#addPersonnelModal form');
+  const modal = document.getElementById('addPersonnelModal');
+  const title = modal.querySelector('.modal-title');
+  const submitBtn = modal.querySelector('button[type="submit"]');
+  
+  // Form title'ı değiştir
+  title.innerHTML = '<i class="bi bi-pencil-square"></i> Personel Düzenle';
+  submitBtn.innerHTML = '<i class="bi bi-check-lg"></i> Güncelle';
+  
+  // Önceki hidden inputları kaldır
+  form.querySelectorAll('input[name="action"], input[name="personnel_id"]').forEach(el => el.remove());
+  
+  // Hidden inputlar ekle
+  const actionInput = document.createElement('input');
+  actionInput.type = 'hidden';
+  actionInput.name = 'action';
+  actionInput.value = 'update';
+  form.appendChild(actionInput);
+  
+  const idInput = document.createElement('input');
+  idInput.type = 'hidden';
+  idInput.name = 'personnel_id';
+  idInput.value = person.id;
+  form.appendChild(idInput);
+  
+  // Form alanlarını doldur
+  form.querySelector('input[name="first_name"]').value = person.first_name || '';
+  form.querySelector('input[name="last_name"]').value = person.last_name || '';
+  form.querySelector('input[name="tc_number"]').value = person.tc_number || '';
+  form.querySelector('select[name="gender"]').value = person.gender || '';
+  form.querySelector('input[name="phone"]').value = person.phone || '';
+  
+  // Departman dropdown'ı seç
+  const deptSelect = document.getElementById('addDepartmentSelect');
+  const deptInput = document.getElementById('addDepartmentInput');
+  const dept = person.department || '';
+  
+  // Dropdown'da varsa seç, yoksa el ile ayarla
+  deptSelect.value = dept;
+  if (deptSelect.value !== dept) {
+    deptSelect.value = '__manual__';
+    deptInput.classList.remove('d-none');
+    deptInput.value = dept;
+  } else {
+    deptInput.classList.add('d-none');
+  }
+  
+  // Oda seçimi (varsa)
+  if (person.room_id) {
+    document.querySelector('select[name="room_id"]').value = person.room_id;
+  }
+  
+  // Modal'ı aç
+  new bootstrap.Modal(modal, { backdrop: 'static', keyboard: false }).show();
+}
+
 if (addPersonnelModalEl) {
   addPersonnelModalEl.addEventListener('hidden.bs.modal', () => {
     stopCamera();
@@ -710,6 +798,23 @@ if (addPersonnelModalEl) {
       capturedPreview.src = '';
     }
     if (cameraPreview) cameraPreview.style.display = 'block';
+    
+    // Form'u reset et ve başlık'ı geri değiştir
+    const form = document.querySelector('#addPersonnelModal form');
+    form.reset();
+    
+    // Önceki hidden inputları kaldır
+    form.querySelectorAll('input[name="action"], input[name="personnel_id"]').forEach(el => el.remove());
+    
+    // Title ve buton'u geri değiştir
+    const title = addPersonnelModalEl.querySelector('.modal-title');
+    title.innerHTML = '<i class="bi bi-plus-lg"></i> Yeni Personel Ekle';
+    
+    const submitBtn = addPersonnelModalEl.querySelector('button[type="submit"]');
+    submitBtn.innerHTML = '<i class="bi bi-check-lg"></i> Ekle';
+
+    const duplicateAlertEl = document.getElementById('duplicateInlineAlert');
+    if (duplicateAlertEl) duplicateAlertEl.classList.add('d-none');
   });
 }
 
@@ -1103,19 +1208,9 @@ document.querySelector('#addPersonnelModal form').addEventListener('submit', fun
       })
       .then(result => {
         if (result.duplicate && result.existingPerson) {
-          // Duplicate bulundu - modal göster
-          const duplicateModal = new bootstrap.Modal(document.getElementById('duplicatePersonelModal'), { backdrop: 'static', keyboard: false });
-          document.getElementById('existingPersonName').textContent = `${result.existingPerson.first_name} ${result.existingPerson.last_name}`;
-          document.getElementById('existingPersonGender').textContent = result.existingPerson.gender === 'erkek' ? 'Erkek' : 'Kadın';
-          document.getElementById('existingPersonDept').textContent = result.existingPerson.department || '-';
-          document.getElementById('existingPersonPhone').textContent = result.existingPerson.phone || '-';
-          
-          // Butona tıklanınca sayfasına git
-          document.getElementById('goToExistingPerson').onclick = function() {
-            window.location.href = `/personel/${result.existingPerson.id}`;
-          };
-          
-          duplicateModal.show();
+          // Duplicate bulundu - modal kapatmadan aynı modal içinde net uyarı göster
+          showDuplicateInlineAlert(result.existingPerson);
+          return;
         } else {
           // Normal redirect
           window.location.href = '/personel';

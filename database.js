@@ -1,7 +1,6 @@
 const Database = require('better-sqlite3');
 const path = require('path');
-const bcrypt = require('bcryptjs');
-const { encryptTcNumber } = require('./middleware/tc-encryption');
+const { encryptTcNumberSync, createTcFingerprint } = require('./middleware/tc-encryption');
 
 const dbPath = process.env.DB_PATH
   ? path.resolve(process.env.DB_PATH)
@@ -165,13 +164,6 @@ function initDatabase() {
       FOREIGN KEY (recorded_by) REFERENCES users(id)
     );
   `);
-
-  // Varsayılan admin kullanıcı oluştur
-  const adminExists = db.prepare('SELECT id FROM users WHERE username = ?').get('admin');
-  if (!adminExists) {
-    const hashedPassword = bcrypt.hashSync('admin123', 10);
-    db.prepare('INSERT INTO users (username, password, full_name, role) VALUES (?, ?, ?, ?)').run('admin', hashedPassword, 'Sistem Yöneticisi', 'admin');
-  }
 
   // Şema migration'ları - mevcut veritabanını veri kaybetmeden günceller
   runMigrations();
@@ -405,6 +397,7 @@ function runMigrations() {
   const personnelColumns = db.prepare('PRAGMA table_info(personnel)').all();
   const hasTcNumber = personnelColumns.some(col => col.name === 'tc_number');
   const hasTcNumberEncrypted = personnelColumns.some(col => col.name === 'tc_number_encrypted');
+  const hasTcNumberFingerprint = personnelColumns.some(col => col.name === 'tc_number_fingerprint');
   const hasPhotoPath = personnelColumns.some(col => col.name === 'photo_path');
   const hasFormSigned = personnelColumns.some(col => col.name === 'form_signed');
   const hasHandoverPayload = personnelColumns.some(col => col.name === 'handover_payload');
@@ -419,20 +412,26 @@ function runMigrations() {
     console.log('Migration: personnel tablosuna tc_number_encrypted alanı eklendi');
     
     // Eski TC numaralarını şifrele
-    const oldPersonnel = db.prepare("SELECT id, tc_number FROM personnel WHERE tc_number IS NOT NULL AND tc_number != '' AND tc_number_encrypted IS NULL").all();
-    if (oldPersonnel.length > 0) {
-      const updateStmt = db.prepare('UPDATE personnel SET tc_number_encrypted = ? WHERE id = ?');
-      for (const person of oldPersonnel) {
-        try {
-          const encrypted = encryptTcNumber(person.tc_number);
-          updateStmt.run(encrypted, person.id);
-          console.log(`  ✓ Personel ${person.id}: TC şifrelendi`);
-        } catch (err) {
-          console.error(`  ✗ Personel ${person.id}: TC şifreleme başarısız`, err.message);
+    if (hasTcNumber) {
+      const oldPersonnel = db.prepare("SELECT id, tc_number FROM personnel WHERE tc_number IS NOT NULL AND tc_number != '' AND tc_number_encrypted IS NULL").all();
+      if (oldPersonnel.length > 0) {
+        const updateStmt = db.prepare('UPDATE personnel SET tc_number_encrypted = ? WHERE id = ?');
+        for (const person of oldPersonnel) {
+          try {
+            const encrypted = encryptTcNumberSync(person.tc_number);
+            updateStmt.run(encrypted, person.id);
+            console.log(`  ✓ Personel ${person.id}: TC şifrelendi`);
+          } catch (err) {
+            console.error(`  ✗ Personel ${person.id}: TC şifreleme başarısız`, err.message);
+          }
         }
+        console.log(`Migration: ${oldPersonnel.length} eski TC kaydı şifrelendi`);
       }
-      console.log(`Migration: ${oldPersonnel.length} eski TC kaydı şifrelendi`);
     }
+  }
+  if (!hasTcNumberFingerprint) {
+    db.exec('ALTER TABLE personnel ADD COLUMN tc_number_fingerprint TEXT');
+    console.log('Migration: personnel tablosuna tc_number_fingerprint alanı eklendi');
   }
   if (!hasPhotoPath) {
     db.exec('ALTER TABLE personnel ADD COLUMN photo_path TEXT');
@@ -480,6 +479,45 @@ function runMigrations() {
   }
 
   db.exec('CREATE INDEX IF NOT EXISTS idx_personnel_tc_last_four ON personnel(tc_last_four)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_personnel_tc_number_fingerprint ON personnel(tc_number_fingerprint)');
+
+  const hasTcFingerprintData = hasTcNumber
+    ? db.prepare("SELECT COUNT(*) AS count FROM personnel WHERE (tc_number_fingerprint IS NULL OR tc_number_fingerprint = '') AND tc_number IS NOT NULL AND tc_number != ''").get()
+    : { count: 0 };
+  if (hasTcFingerprintData && hasTcFingerprintData.count > 0) {
+    const backfillTcFingerprintStmt = db.prepare('UPDATE personnel SET tc_number_fingerprint = ? WHERE id = ?');
+    const legacyRows = db.prepare("SELECT id, tc_number FROM personnel WHERE (tc_number_fingerprint IS NULL OR tc_number_fingerprint = '') AND tc_number IS NOT NULL AND tc_number != ''").all();
+    let fingerprintBackfilled = 0;
+    for (const person of legacyRows) {
+      const fingerprint = createTcFingerprint(person.tc_number);
+      if (!fingerprint) continue;
+      backfillTcFingerprintStmt.run(fingerprint, person.id);
+      fingerprintBackfilled += 1;
+    }
+    if (fingerprintBackfilled > 0) {
+      console.log(`Migration: ${fingerprintBackfilled} eski TC fingerprint kaydı dolduruldu`);
+    }
+  }
+
+  const hasMissingEncryptedFromPlain = hasTcNumber
+    ? db.prepare("SELECT COUNT(*) AS count FROM personnel WHERE (tc_number_encrypted IS NULL OR tc_number_encrypted = '') AND tc_number IS NOT NULL AND tc_number != ''").get()
+    : { count: 0 };
+  if (hasMissingEncryptedFromPlain && hasMissingEncryptedFromPlain.count > 0) {
+    const missingEncryptedRows = db.prepare("SELECT id, tc_number FROM personnel WHERE (tc_number_encrypted IS NULL OR tc_number_encrypted = '') AND tc_number IS NOT NULL AND tc_number != ''").all();
+    const fillEncryptedStmt = db.prepare('UPDATE personnel SET tc_number_encrypted = ? WHERE id = ?');
+    let encryptedBackfilled = 0;
+    for (const person of missingEncryptedRows) {
+      try {
+        const encrypted = encryptTcNumberSync(person.tc_number);
+        if (!encrypted) continue;
+        fillEncryptedStmt.run(encrypted, person.id);
+        encryptedBackfilled += 1;
+      } catch (_) {}
+    }
+    if (encryptedBackfilled > 0) {
+      console.log(`Migration: ${encryptedBackfilled} kayıtta tc_number_encrypted dolduruldu`);
+    }
+  }
 
   const hasTcLastFourData = db.prepare("SELECT COUNT(*) AS count FROM personnel WHERE tc_last_four IS NULL OR tc_last_four = ''").get();
   if (hasTcLastFourData && hasTcLastFourData.count > 0 && hasTcNumber) {
@@ -487,6 +525,25 @@ function runMigrations() {
     const backfillResult = backfillTcLastFourStmt.run();
     if (backfillResult && backfillResult.changes > 0) {
       console.log(`Migration: ${backfillResult.changes} eski TC son 4 hane kaydı dolduruldu`);
+    }
+  }
+
+  if (hasTcNumber) {
+    const scrubPlainTcResult = db.prepare("UPDATE personnel SET tc_number = NULL WHERE tc_number IS NOT NULL AND TRIM(tc_number) != ''").run();
+    if (scrubPlainTcResult && scrubPlainTcResult.changes > 0) {
+      console.log(`Migration: ${scrubPlainTcResult.changes} personel kaydında açık TC temizlendi`);
+    }
+  }
+
+  const hasRoomHistoryTable = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='room_stay_history'").get();
+  if (hasRoomHistoryTable) {
+    const roomHistoryColumns = db.prepare('PRAGMA table_info(room_stay_history)').all();
+    const hasRoomHistoryTc = roomHistoryColumns.some(col => col.name === 'tc_number');
+    if (hasRoomHistoryTc) {
+      const scrubRoomHistoryTcResult = db.prepare("UPDATE room_stay_history SET tc_number = NULL WHERE tc_number IS NOT NULL AND TRIM(tc_number) != ''").run();
+      if (scrubRoomHistoryTcResult && scrubRoomHistoryTcResult.changes > 0) {
+        console.log(`Migration: ${scrubRoomHistoryTcResult.changes} geçmiş kaydında açık TC temizlendi`);
+      }
     }
   }
 
@@ -515,6 +572,7 @@ function runMigrations() {
         key_delivered INTEGER DEFAULT 0,
         checkout_key_returned INTEGER,
         checkout_room_id INTEGER,
+        tc_number_fingerprint TEXT,
         FOREIGN KEY (room_id) REFERENCES rooms(id),
         FOREIGN KEY (added_by) REFERENCES users(id)
       );
@@ -523,13 +581,13 @@ function runMigrations() {
         id, first_name, last_name, gender, phone, department, room_id, status,
         check_in_date, check_out_date, added_by, created_at, tc_number_encrypted, photo_path,
         form_signed, handover_payload, entry_handover_payload, checkout_handover_payload,
-        key_delivered, checkout_key_returned, checkout_room_id
+        key_delivered, checkout_key_returned, checkout_room_id, tc_number_fingerprint
       )
       SELECT
         id, first_name, last_name, gender, phone, department, room_id, status,
         check_in_date, check_out_date, added_by, created_at, tc_number_encrypted, photo_path,
         form_signed, handover_payload, entry_handover_payload, checkout_handover_payload,
-        key_delivered, checkout_key_returned, checkout_room_id
+        key_delivered, checkout_key_returned, checkout_room_id, tc_number_fingerprint
       FROM personnel;
 
       DROP TABLE personnel;

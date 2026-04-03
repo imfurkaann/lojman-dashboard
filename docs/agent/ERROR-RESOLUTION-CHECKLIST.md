@@ -3,6 +3,12 @@
 **Kullanım**: Agent bu listeyi takip ederek hataları nokta-atışı çözmelidir.  
 **Tamamlama**: Her item'ı çözdükten sonra ✅ ile işaretle.
 
+**Meta Information**:
+- **Last Updated**: April 3, 2026
+- **Status**: v2.0 - Comprehensive with detailed guides
+- **Reference Docs**: See copilot-instructions.md and .github/AGENTS.md
+- **Entry Point**: docs/agent/INDEX.md
+
 ---
 
 ## PHASE 1: KRITIK HATALAR (P0) - BLAKER

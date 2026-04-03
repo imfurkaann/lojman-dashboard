@@ -43,10 +43,11 @@ router.post('/ekle', (req, res) => {
 
 // Ziyaretçi çıkış
 router.post('/:id/cikis', (req, res) => {
+  const safeUserId = getSafeUserId(req);
   const visitor = db.prepare('SELECT * FROM visitors WHERE id = ?').get(req.params.id);
   if (visitor) {
     db.prepare('UPDATE visitors SET departure_time = CURRENT_TIMESTAMP WHERE id = ?').run(req.params.id);
-    logActivity('ziyaretci_cikis', `Ziyaretçi çıkış: ${visitor.visitor_name}`, null, req.session.user.id);
+    logActivity('ziyaretci_cikis', `Ziyaretçi çıkış: ${visitor.visitor_name}`, null, safeUserId);
   }
   res.redirect('/ziyaretciler');
 });

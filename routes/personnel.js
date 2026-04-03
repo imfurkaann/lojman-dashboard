@@ -4,7 +4,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { db, logActivity, updateRoomStatus, syncRoomKeyStock, recordRoomEntry, recordRoomExit } = require('../database');
-const { encryptTcNumber, verifyTcNumber, blurTcNumber } = require('../middleware/tc-encryption');
+const { encryptTcNumber, createTcFingerprint, verifyTcNumber, blurTcNumber } = require('../middleware/tc-encryption');
 
 const INVENTORY_ISSUE_TAGS = ['eksik', 'arizali', 'kirik', 'calismiyor', 'kayip', 'diger'];
 const ROOM_AVAILABILITY_STATUSES = ['musait', 'temizlenmeli', 'kullanilamaz'];
@@ -39,38 +39,23 @@ function validateRoomAssignmentAvailability(room, allowCleaningOverride = false)
   return { ok: true };
 }
 
-function getTcDuplicateCandidates(normalizedTc, excludePersonnelId = null) {
-  const tcLastFour = String(normalizedTc || '').trim().slice(-4);
-  if (!tcLastFour) return [];
-
-  if (excludePersonnelId) {
-    return db.prepare(
-      'SELECT id, tc_number_encrypted FROM personnel WHERE id != ? AND tc_last_four = ? AND tc_number_encrypted IS NOT NULL'
-    ).all(excludePersonnelId, tcLastFour);
-  }
-
-  return db.prepare(
-    'SELECT id, tc_number_encrypted FROM personnel WHERE tc_last_four = ? AND tc_number_encrypted IS NOT NULL'
-  ).all(tcLastFour);
-}
-
 async function findDuplicatePersonnelByTc(normalizedTc, excludePersonnelId = null) {
-  const candidates = getTcDuplicateCandidates(normalizedTc, excludePersonnelId);
-  let fallbackCandidates = candidates;
+  const tcFingerprint = createTcFingerprint(normalizedTc);
+  if (tcFingerprint) {
+    const fingerprintMatch = excludePersonnelId
+      ? db.prepare('SELECT id, tc_number_encrypted, tc_number_fingerprint FROM personnel WHERE id != ? AND tc_number_fingerprint = ? LIMIT 1').get(excludePersonnelId, tcFingerprint)
+      : db.prepare('SELECT id, tc_number_encrypted, tc_number_fingerprint FROM personnel WHERE tc_number_fingerprint = ? LIMIT 1').get(tcFingerprint);
 
-  if (fallbackCandidates.length === 0) {
-    const statement = db.prepare(
-      excludePersonnelId
-        ? 'SELECT id, tc_number_encrypted FROM personnel WHERE id != ? AND tc_number_encrypted IS NOT NULL'
-        : 'SELECT id, tc_number_encrypted FROM personnel WHERE tc_number_encrypted IS NOT NULL'
-    );
-
-    fallbackCandidates = excludePersonnelId
-      ? statement.all(excludePersonnelId)
-      : statement.all();
+    if (fingerprintMatch) {
+      return fingerprintMatch;
+    }
   }
 
-  for (const person of fallbackCandidates) {
+  const legacyEncryptedRows = excludePersonnelId
+    ? db.prepare("SELECT id, tc_number_encrypted FROM personnel WHERE id != ? AND (tc_number_fingerprint IS NULL OR tc_number_fingerprint = '') AND tc_number_encrypted IS NOT NULL").all(excludePersonnelId)
+    : db.prepare("SELECT id, tc_number_encrypted FROM personnel WHERE (tc_number_fingerprint IS NULL OR tc_number_fingerprint = '') AND tc_number_encrypted IS NOT NULL").all();
+
+  for (const person of legacyEncryptedRows) {
     const isMatch = await verifyTcNumber(normalizedTc, person.tc_number_encrypted);
     if (isMatch) {
       return person;
@@ -606,6 +591,7 @@ router.post('/ekle', async (req, res) => {
       }
       return res.status(500).send('TC kaydı sırasında hata oluştu.');
     }
+    const tcFingerprint = createTcFingerprint(normalizedTc);
 
   // TC numarası kontrolü - tüm personelleri getir ve şifreli TC ile eşleştir
     const duplicatePerson = await findDuplicatePersonnelByTc(normalizedTc);
@@ -617,6 +603,7 @@ router.post('/ekle', async (req, res) => {
     if (req.file) {
       fs.unlink(path.join(uploadDir, req.file.filename), () => {});
     }
+      res.set('X-Skip-Live-Refresh', '1');
       return res.json({ duplicate: true, existingPerson, message: 'Bu kişi zaten sistemde kayıtlıdır.' });
     }
 
@@ -652,7 +639,7 @@ router.post('/ekle', async (req, res) => {
     const nextCheckInDate = nextRoomId ? new Date().toISOString() : null;
     const roomChangeAt = new Date().toISOString();
     const tcLastFour = normalizedTc.slice(-4);
-    db.prepare('UPDATE personnel SET first_name = ?, last_name = ?, gender = ?, phone = ?, department = ?, room_id = ?, status = ?, check_in_date = ?, photo_path = ?, form_signed = ?, entry_handover_payload = ?, key_delivered = ?, tc_number_encrypted = ?, tc_last_four = ? WHERE id = ?').run(
+    db.prepare('UPDATE personnel SET first_name = ?, last_name = ?, gender = ?, phone = ?, department = ?, room_id = ?, status = ?, check_in_date = ?, photo_path = ?, form_signed = ?, entry_handover_payload = ?, key_delivered = ?, tc_number_encrypted = ?, tc_number_fingerprint = ?, tc_last_four = ? WHERE id = ?').run(
       first_name, last_name, gender, phone || null, department || null,
       nextRoomId,
       nextStatus,
@@ -662,6 +649,7 @@ router.post('/ekle', async (req, res) => {
       handover_payload || null,
       key_delivered === '1' ? 1 : 0,
       encryptedTc,
+      tcFingerprint,
       tcLastFour,
       existingPerson.id
     );
@@ -706,11 +694,12 @@ router.post('/ekle', async (req, res) => {
     const nextStatus = parsedRoomId ? 'aktif' : 'bosta';
     const checkInDate = parsedRoomId ? new Date().toISOString() : null;
     const tcLastFour = normalizedTc.slice(-4);
-    const result = db.prepare('INSERT INTO personnel (first_name, last_name, gender, phone, department, room_id, status, tc_number_encrypted, tc_last_four, photo_path, form_signed, entry_handover_payload, key_delivered, check_in_date, added_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
+    const result = db.prepare('INSERT INTO personnel (first_name, last_name, gender, phone, department, room_id, status, tc_number_encrypted, tc_number_fingerprint, tc_last_four, photo_path, form_signed, entry_handover_payload, key_delivered, check_in_date, added_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
       first_name, last_name, gender, phone || null, department || null,
       parsedRoomId,
       nextStatus,
       encryptedTc,
+      tcFingerprint,
       tcLastFour,
       photoPath,
       isFormSigned,
@@ -800,6 +789,7 @@ router.post('/ekle-ve-ata', async (req, res) => {
     console.error('TC şifreleme hatası:', error);
     return res.redirect(`/odalar/${parsedRoomId}?error=` + encodeURIComponent('Sistem hatası'));
   }
+  const tcFingerprint = createTcFingerprint(normalizedTc);
 
   // TC duplicate kontrolü - şifreli versiyonlarla karşılaştır
   const existingPerson = await findDuplicatePersonnelByTc(normalizedTc);
@@ -838,8 +828,8 @@ router.post('/ekle-ve-ata', async (req, res) => {
     const checkInAt = new Date().toISOString();
     const tcLastFour = normalizedTc.slice(-4);
     const insertPersonnelResult = db.prepare(
-      'INSERT INTO personnel (first_name, last_name, gender, phone, department, tc_number_encrypted, tc_last_four, photo_path, room_id, entry_handover_payload, key_delivered, status, check_in_date, added_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-    ).run(first_name, last_name, gender, phone, department, encryptedTc, tcLastFour, photoPath, parsedRoomId, handover_payload || null, keyDeliveredValue, 'aktif', checkInAt, safeUserId);
+      'INSERT INTO personnel (first_name, last_name, gender, phone, department, tc_number_encrypted, tc_number_fingerprint, tc_last_four, photo_path, room_id, entry_handover_payload, key_delivered, status, check_in_date, added_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(first_name, last_name, gender, phone, department, encryptedTc, tcFingerprint, tcLastFour, photoPath, parsedRoomId, handover_payload || null, keyDeliveredValue, 'aktif', checkInAt, safeUserId);
     
     const personnelId = insertPersonnelResult.lastInsertRowid;
     recordRoomEntry(personnelId, parsedRoomId, checkInAt);
@@ -1061,11 +1051,12 @@ router.post('/:id/guncelle', upload.single('photo'), async (req, res) => {
     key_delivered
   } = req.body;
 
-  const person = db.prepare('SELECT id, photo_path, room_id, key_delivered, tc_number_encrypted, tc_last_four FROM personnel WHERE id = ?').get(req.params.id);
+  const person = db.prepare('SELECT id, photo_path, room_id, key_delivered, tc_number_encrypted, tc_number_fingerprint, tc_last_four FROM personnel WHERE id = ?').get(req.params.id);
   if (!person) return res.redirect('/personel');
 
   const normalizedTc = (tc_number || '').trim();
   let encryptedTc = person.tc_number_encrypted || null;
+  let tcFingerprint = person.tc_number_fingerprint || null;
   let tcLastFour = person.tc_last_four || null;
 
   if (normalizedTc) {
@@ -1079,6 +1070,7 @@ router.post('/:id/guncelle', upload.single('photo'), async (req, res) => {
     // TC numarasını şifrele
     try {
       encryptedTc = await encryptTcNumber(normalizedTc);
+      tcFingerprint = createTcFingerprint(normalizedTc);
       tcLastFour = normalizedTc.slice(-4);
     } catch (error) {
       console.error('TC şifreleme hatası:', error);
@@ -1124,7 +1116,7 @@ router.post('/:id/guncelle', upload.single('photo'), async (req, res) => {
   const updateTx = db.transaction(() => {
     const finalPhotoPath = photoPath || existingPhotoPath;
     db.prepare(
-      'UPDATE personnel SET first_name = ?, last_name = ?, gender = ?, phone = ?, department = ?, tc_number_encrypted = ?, tc_last_four = ?, form_signed = ?, key_delivered = ?, photo_path = ? WHERE id = ?'
+      'UPDATE personnel SET first_name = ?, last_name = ?, gender = ?, phone = ?, department = ?, tc_number_encrypted = ?, tc_number_fingerprint = ?, tc_last_four = ?, form_signed = ?, key_delivered = ?, photo_path = ? WHERE id = ?'
     ).run(
       first_name,
       last_name,
@@ -1132,6 +1124,7 @@ router.post('/:id/guncelle', upload.single('photo'), async (req, res) => {
       phone || null,
       department || null,
       encryptedTc,
+      tcFingerprint,
       tcLastFour,
       isFormSigned,
       isKeyDelivered,

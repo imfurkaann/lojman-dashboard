@@ -1,6 +1,12 @@
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 
 const SALT_ROUNDS = 10;
+const FINGERPRINT_SECRET = process.env.TC_FINGERPRINT_SECRET || process.env.SESSION_SECRET || 'lojman-dashboard-tc-fingerprint-v1';
+
+function normalizeTcNumber(tcNumber) {
+  return String(tcNumber || '').trim();
+}
 
 /**
  * TC kimlik numarasını şifrele
@@ -8,14 +14,32 @@ const SALT_ROUNDS = 10;
  * @returns {Promise<string>} Şifreli TC numarası
  */
 async function encryptTcNumber(tcNumber) {
-  if (!tcNumber) return null;
+  const normalizedTc = normalizeTcNumber(tcNumber);
+  if (!normalizedTc) return null;
   try {
-    const hashedValue = await bcrypt.hash(String(tcNumber).trim(), SALT_ROUNDS);
+    const hashedValue = await bcrypt.hash(normalizedTc, SALT_ROUNDS);
     return hashedValue;
   } catch (error) {
     console.error('TC numarası şifreleme hatası:', error);
     throw error;
   }
+}
+
+function encryptTcNumberSync(tcNumber) {
+  const normalizedTc = normalizeTcNumber(tcNumber);
+  if (!normalizedTc) return null;
+  try {
+    return bcrypt.hashSync(normalizedTc, SALT_ROUNDS);
+  } catch (error) {
+    console.error('TC numarası senkron şifreleme hatası:', error);
+    throw error;
+  }
+}
+
+function createTcFingerprint(tcNumber) {
+  const normalizedTc = normalizeTcNumber(tcNumber);
+  if (!normalizedTc) return null;
+  return crypto.createHmac('sha256', FINGERPRINT_SECRET).update(normalizedTc).digest('hex');
 }
 
 /**
@@ -25,9 +49,10 @@ async function encryptTcNumber(tcNumber) {
  * @returns {Promise<boolean>} Eşleşmiş mi
  */
 async function verifyTcNumber(plainTc, encryptedTc) {
-  if (!plainTc || !encryptedTc) return false;
+  const normalizedTc = normalizeTcNumber(plainTc);
+  if (!normalizedTc || !encryptedTc) return false;
   try {
-    const isMatch = await bcrypt.compare(String(plainTc).trim(), encryptedTc);
+    const isMatch = await bcrypt.compare(normalizedTc, encryptedTc);
     return isMatch;
   } catch (error) {
     console.error('TC numarası doğrulama hatası:', error);
@@ -56,6 +81,9 @@ function blurTcNumber(tcNumber) {
 
 module.exports = {
   encryptTcNumber,
+  encryptTcNumberSync,
+  createTcFingerprint,
+  normalizeTcNumber,
   verifyTcNumber,
   blurTcNumber
 };

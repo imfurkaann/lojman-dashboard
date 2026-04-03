@@ -1,5 +1,10 @@
 # 📚 AGENT DOCUMENTATION INDEX
 
+**Version**: 2.0  
+**Last Updated**: April 3, 2026  
+**Maintained By**: Lojman Dashboard Team  
+**Related**: [copilot-instructions.md](../../copilot-instructions.md) | [.github/AGENTS.md](../../.github/AGENTS.md)
+
 **Start Here**: Choose your task and read the appropriate guide.
 
 ---

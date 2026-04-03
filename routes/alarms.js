@@ -2,6 +2,12 @@ const express = require('express');
 const router = express.Router();
 const { db, logActivity } = require('../database');
 
+function getSafeUserId(req) {
+  const rawUserId = req && req.session && req.session.user ? req.session.user.id : null;
+  const actorUser = rawUserId ? db.prepare('SELECT id FROM users WHERE id = ?').get(rawUserId) : null;
+  return actorUser ? actorUser.id : null;
+}
+
 // Yangın alarm listesi
 router.get('/', (req, res) => {
   const dateFilter = req.query.date || '';
@@ -22,11 +28,12 @@ router.get('/', (req, res) => {
 // Alarm ekle
 router.post('/ekle', (req, res) => {
   const { location, is_real, description, action_taken } = req.body;
+  const safeUserId = getSafeUserId(req);
   db.prepare('INSERT INTO fire_alarms (location, is_real, description, action_taken, recorded_by) VALUES (?, ?, ?, ?, ?)').run(
-    location, is_real === 'true' ? 1 : 0, description || null, action_taken || null, req.session.user.id
+    location, is_real === 'true' ? 1 : 0, description || null, action_taken || null, safeUserId
   );
   const alarmType = is_real === 'true' ? 'GERÇEK' : 'YANLIŞ';
-  logActivity('yangin_alarm', `Yangın alarmı: ${location} - ${alarmType} ALARM`, description || null, req.session.user.id);
+  logActivity('yangin_alarm', `Yangın alarmı: ${location} - ${alarmType} ALARM`, description || null, safeUserId);
   res.redirect('/yangin-alarm');
 });
 

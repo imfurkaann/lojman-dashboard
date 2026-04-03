@@ -1,5 +1,11 @@
 # 🎯 AGENT FOCUS AREAS - FUNCTION-SPECIFIC GUIDES
 
+**Version**: 2.0  
+**Last Updated**: April 3, 2026  
+**Purpose**: Technical reference for agents before fixing bugs  
+**Related**: ERROR-RESOLUTION-CHECKLIST.md, CRITICAL-BUGS-DETAILED.md  
+**Start Here**: docs/agent/INDEX.md
+
 Detailed guide for each critical function and area. Agent should read relevant section before fixing.
 
 ---
