@@ -47,7 +47,13 @@ router.get('/', (req, res) => {
   `).all();
   const rooms = db.prepare("SELECT id, room_number, floor FROM rooms WHERE status != 'bakimda' ORDER BY room_number").all();
   const savedItems = db.prepare('SELECT name FROM equipment_items ORDER BY name').all();
-  res.render('equipment', { title: 'Eşya Takip', equipment, statusFilter, search, personnel, rooms, savedItems });
+
+  // Active (not yet returned) items should not be selectable for a new delivery.
+  const activeDeliveredRows = db.prepare("SELECT DISTINCT item_name FROM shared_equipment WHERE status = 'teslim_edildi'").all();
+  const activeDeliveredSet = new Set(activeDeliveredRows.map(row => String(row.item_name || '').trim().toLocaleLowerCase('tr-TR')));
+  const availableItems = savedItems.filter(item => !activeDeliveredSet.has(String(item.name || '').trim().toLocaleLowerCase('tr-TR')));
+
+  res.render('equipment', { title: 'Eşya Takip', equipment, statusFilter, search, personnel, rooms, savedItems, availableItems });
 });
 
 // Eşya teslim
@@ -85,7 +91,7 @@ router.post('/:id/durum', (req, res) => {
     return res.redirect('/esya-takip');
   }
 
-  const returnedAt = status === 'iade_edildi' ? new Date().toISOString() : null;
+  const returnedAt = (status === 'iade_edildi' || status === 'kayip') ? new Date().toISOString() : null;
   db.prepare('UPDATE shared_equipment SET status = ?, returned_at = ? WHERE id = ?').run(status, returnedAt, req.params.id);
 
   if (status === 'iade_edildi') {
@@ -131,7 +137,7 @@ router.post('/:id/kayip', (req, res) => {
   const safeUserId = getSafeUserId(req);
   const item = db.prepare('SELECT * FROM shared_equipment WHERE id = ?').get(req.params.id);
   if (item) {
-    db.prepare("UPDATE shared_equipment SET status = 'kayip' WHERE id = ?").run(req.params.id);
+    db.prepare("UPDATE shared_equipment SET status = 'kayip', returned_at = CURRENT_TIMESTAMP WHERE id = ?").run(req.params.id);
     logActivity('esya_kayip', `${item.item_name} - ${item.given_to} kişisinde kayıp bildirildi`, null, safeUserId);
   }
   res.redirect('/esya-takip');

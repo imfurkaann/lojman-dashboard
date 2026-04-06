@@ -584,7 +584,7 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...(p
 
           <input type="hidden" name="allow_cleaning_override" id="detailAllowCleaningOverrideInput" value="0">
 
-          <% if (person.status === 'cikis_yapti') { %>
+          <% if (person.status !== 'aktif') { %>
           <div id="reassignHandoverSection" class="border rounded p-3" style="display:none;">
             <h6 class="mb-3"><i class="bi bi-clipboard-check"></i> Yeniden Yerleştirme Teslim Kontrolü</h6>
 
@@ -1128,10 +1128,10 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...(p
   });
 })();
 
-// Reassign modal logic (for exited personnel)
+// Reassign modal logic (for non-active personnel)
 (function() {
-  const isExited = "<%= person.status %>" === 'cikis_yapti';
-  if (!isExited) return;
+  const needsHandoverOnAssign = "<%= person.status %>" !== 'aktif';
+  if (!needsHandoverOnAssign) return;
 
   const roomInventoryItemsRaw = document.getElementById('roomInventoryItemsMapData');
   const roomOpenIssueMapRaw = document.getElementById('roomOpenIssueMapData');

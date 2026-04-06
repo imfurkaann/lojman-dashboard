@@ -108,7 +108,10 @@
             <label class="form-label">Eşya Adı *</label>
             <select class="form-select" name="item_name" required>
               <option value="">Eşya Seçin</option>
-              <% savedItems.forEach(item => { %>
+              <% if ((availableItems || []).length === 0) { %>
+                <option value="" disabled>Teslim edilebilir eşya yok</option>
+              <% } %>
+              <% (availableItems || []).forEach(item => { %>
                 <option value="<%= item.name %>"><%= item.name %></option>
               <% }) %>
             </select>

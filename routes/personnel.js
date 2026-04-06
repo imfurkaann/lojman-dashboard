@@ -1182,7 +1182,7 @@ router.post('/:id/oda-degistir', (req, res) => {
     }
   }
 
-  if (person.status === 'cikis_yapti' && parsedNewRoomId) {
+  if (person.status !== 'aktif' && parsedNewRoomId) {
     const isFormSigned = reassign_form_signed === '1';
     if (!isFormSigned) {
       return res.status(400).send('Yeniden oda tahsisi için zimmet formu zorunludur.');
@@ -1215,7 +1215,7 @@ router.post('/:id/oda-degistir', (req, res) => {
     const oldKeyDeliveredValue = Number(person.key_delivered || 0) === 1 ? 1 : 0;
     let newKeyDeliveredValue = oldKeyDeliveredValue;
 
-    if (person.status === 'cikis_yapti' && parsedNewRoomId) {
+    if (person.status !== 'aktif' && parsedNewRoomId) {
       newKeyDeliveredValue = reassign_key_delivered === '1' ? 1 : 0;
       db.prepare('UPDATE personnel SET room_id = ?, status = ?, check_in_date = ?, entry_handover_payload = ?, form_signed = ?, key_delivered = ?, checkout_key_returned = NULL, checkout_room_id = NULL WHERE id = ?').run(
         parsedNewRoomId,
@@ -1276,7 +1276,7 @@ router.post('/:id/oda-degistir', (req, res) => {
   const newRoom = parsedNewRoomId ? db.prepare('SELECT room_number FROM rooms WHERE id = ?').get(parsedNewRoomId) : null;
   logActivity('oda_degisikligi', `${person.first_name} ${person.last_name} - Oda: ${person.old_room || 'Yok'} → ${newRoom ? newRoom.room_number : 'Yok'}`, null, safeUserId);
 
-  if (person.status === 'cikis_yapti' && parsedNewRoomId) {
+  if (person.status !== 'aktif' && parsedNewRoomId) {
     db.prepare('UPDATE personnel SET check_in_date = ?, check_out_date = NULL WHERE id = ?').run(roomChangeAt, req.params.id);
     db.prepare('INSERT INTO handover_forms (personnel_id, room_id, form_type, is_signed, signed_at) VALUES (?, ?, ?, ?, ?)').run(
       req.params.id,
@@ -1285,7 +1285,7 @@ router.post('/:id/oda-degistir', (req, res) => {
       1,
       roomChangeAt
     );
-    logActivity('personel_yeniden_aktif', `${person.first_name} ${person.last_name} yeniden odaya atandı ve aktif edildi`, null, safeUserId);
+    logActivity('personel_yeniden_aktif', `${person.first_name} ${person.last_name} odaya atandı ve aktif edildi`, null, safeUserId);
   }
 
   res.redirect(`/personel/${req.params.id}`);
