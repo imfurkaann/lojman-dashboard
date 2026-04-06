@@ -10,25 +10,55 @@ function getSafeUserId(req) {
 
 // Giriş/Çıkış listesi
 router.get('/', (req, res) => {
-  const typeFilter = req.query.type || '';
+  const today = new Date().toISOString().slice(0, 10);
+  const selectedDate = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date || ''))
+    ? String(req.query.date)
+    : today;
 
-  let activeQuery = "SELECT el.*, u.full_name as added_by_name FROM entry_exit_list el LEFT JOIN users u ON el.added_by = u.id WHERE el.status = 'bekliyor'";
-  let completedQuery = "SELECT el.*, u.full_name as added_by_name FROM entry_exit_list el LEFT JOIN users u ON el.added_by = u.id WHERE el.status IN ('tamamlandi', 'iptal')";
-  const activeParams = [];
-  const completedParams = [];
+  const dailyEntries = db.prepare(`
+    SELECT
+      h.id,
+      h.personnel_id,
+      h.room_id,
+      h.first_name,
+      h.last_name,
+      h.department,
+      h.entry_at,
+      r.room_number,
+      p.status AS personnel_status
+    FROM room_stay_history h
+    LEFT JOIN rooms r ON r.id = h.room_id
+    LEFT JOIN personnel p ON p.id = h.personnel_id
+    WHERE h.entry_at IS NOT NULL
+      AND date(h.entry_at, 'localtime') = ?
+    ORDER BY datetime(h.entry_at) DESC, h.id DESC
+  `).all(selectedDate);
 
-  if (typeFilter) {
-    activeQuery += ' AND el.type = ?';
-    completedQuery += ' AND el.type = ?';
-    activeParams.push(typeFilter);
-    completedParams.push(typeFilter);
-  }
-  activeQuery += " ORDER BY datetime(COALESCE(el.entry_date, el.exit_date, el.planned_date, el.created_at)) ASC, el.created_at DESC";
-  completedQuery += " ORDER BY datetime(COALESCE(el.entry_date, el.exit_date, el.created_at)) DESC LIMIT 50";
+  const dailyExits = db.prepare(`
+    SELECT
+      h.id,
+      h.personnel_id,
+      h.room_id,
+      h.first_name,
+      h.last_name,
+      h.department,
+      h.exit_at,
+      r.room_number,
+      p.status AS personnel_status
+    FROM room_stay_history h
+    LEFT JOIN rooms r ON r.id = h.room_id
+    LEFT JOIN personnel p ON p.id = h.personnel_id
+    WHERE h.exit_at IS NOT NULL
+      AND date(h.exit_at, 'localtime') = ?
+    ORDER BY datetime(h.exit_at) DESC, h.id DESC
+  `).all(selectedDate);
 
-  const activeEntries = db.prepare(activeQuery).all(...activeParams);
-  const completedEntries = db.prepare(completedQuery).all(...completedParams);
-  res.render('entries', { title: 'Giriş/Çıkış Listesi', activeEntries, completedEntries, typeFilter });
+  res.render('entries', {
+    title: 'Giriş/Çıkış Listesi',
+    selectedDate,
+    dailyEntries,
+    dailyExits
+  });
 });
 
 // Yeni kayıt ekle

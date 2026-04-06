@@ -7,6 +7,12 @@
   </button>
 </div>
 
+<style>
+  .visitor-soft-deleted {
+    opacity: 0.55;
+  }
+</style>
+
 <!-- Filtre -->
 <div class="card border-0 shadow-sm mb-4">
   <div class="card-body py-2">
@@ -51,7 +57,7 @@
         </thead>
         <tbody>
           <% visitors.forEach(v => { %>
-          <tr>
+          <tr class="<%= v.deleted_at ? 'visitor-soft-deleted' : '' %>">
             <td><strong><%= v.visitor_name %></strong></td>
             <td><%= v.purpose %></td>
             <td><%= v.company || '-' %></td>
@@ -64,14 +70,24 @@
                 <span class="badge bg-info">Hâlâ Burada</span>
               <% } %>
             </td>
-            <td><small><%= v.notes || '-' %></small></td>
             <td>
-              <% if (!v.departure_time) { %>
+              <small><%= v.notes || '-' %></small>
+              <% if (v.deleted_at) { %>
+                <div><span class="badge bg-secondary mt-1">Soft Silindi</span></div>
+              <% } %>
+            </td>
+            <td>
+              <% if (!v.departure_time && !v.deleted_at) { %>
                 <form method="POST" action="/ziyaretciler/<%= v.id %>/cikis" class="d-inline">
                   <button class="btn btn-sm btn-outline-warning" title="Çıkış Yap"><i class="bi bi-box-arrow-right"></i></button>
                 </form>
               <% } %>
-              <button class="btn btn-sm btn-outline-primary" title="Düzenle" data-bs-toggle="modal" data-bs-target="#editVisitorModal<%= v.id %>"><i class="bi bi-pencil"></i></button>
+              <% if (!v.deleted_at) { %>
+                <button class="btn btn-sm btn-outline-primary" title="Düzenle" data-bs-toggle="modal" data-bs-target="#editVisitorModal<%= v.id %>"><i class="bi bi-pencil"></i></button>
+                <form method="POST" action="/ziyaretciler/<%= v.id %>/sil" class="d-inline" onsubmit="return confirm('Bu kayıt soft silinecek. Devam edilsin mi?')">
+                  <button class="btn btn-sm btn-outline-danger" title="Sil"><i class="bi bi-trash"></i></button>
+                </form>
+              <% } %>
             </td>
           </tr>
           <% }) %>

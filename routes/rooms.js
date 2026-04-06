@@ -277,6 +277,7 @@ router.get('/', (req, res) => {
   const search = req.query.search || '';
   const statusFilter = req.query.status || '';
   const floorFilter = req.query.floor || '';
+  const availabilityFilter = req.query.availability || '';
   
   let query = `SELECT r.*, 
     (SELECT COUNT(*) FROM personnel p WHERE p.room_id = r.id AND p.status = 'aktif') as occupant_count
@@ -285,7 +286,7 @@ router.get('/', (req, res) => {
 
   if (search) {
     query += ' AND CAST(r.room_number AS TEXT) LIKE ?';
-    params.push(`${search}%`);
+    params.push(`%${search}%`);
   }
   if (statusFilter) {
     query += ' AND r.status = ?';
@@ -294,6 +295,10 @@ router.get('/', (req, res) => {
   if (floorFilter) {
     query += ' AND r.floor = ?';
     params.push(floorFilter);
+  }
+  if (availabilityFilter) {
+    query += ' AND r.availability_status = ?';
+    params.push(availabilityFilter);
   }
   query += ' ORDER BY r.room_number ASC';
 
@@ -325,6 +330,7 @@ router.get('/', (req, res) => {
     search,
     statusFilter,
     floorFilter,
+    availabilityFilter,
     floors: FLOORS
   });
 });

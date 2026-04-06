@@ -18,7 +18,7 @@ router.get('/', (req, res) => {
 
   if (search) {
     query += ' AND (v.visitor_name LIKE ? OR v.purpose LIKE ? OR v.company LIKE ?)';
-    params.push(`${search}%`, `${search}%`, `${search}%`);
+    params.push(`%${search}%`, `%${search}%`, `%${search}%`);
   }
   if (dateFilter) {
     query += ' AND date(v.visit_date) = ?';
@@ -62,6 +62,17 @@ router.post('/:id/guncelle', (req, res) => {
       visitor_name, purpose, company || null, phone || null, notes || null, req.params.id
     );
     logActivity('ziyaretci_guncelle', `Ziyaretçi: ${visitor_name} - Amaç: ${purpose}`, company ? `Firma: ${company}` : null, safeUserId);
+  }
+  res.redirect('/ziyaretciler');
+});
+
+// Soft sil
+router.post('/:id/sil', (req, res) => {
+  const safeUserId = getSafeUserId(req);
+  const visitor = db.prepare('SELECT * FROM visitors WHERE id = ?').get(req.params.id);
+  if (visitor && !visitor.deleted_at) {
+    db.prepare('UPDATE visitors SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?').run(req.params.id);
+    logActivity('ziyaretci_sil_soft', `Ziyaretçi kaydı soft silindi: ${visitor.visitor_name}`, null, safeUserId);
   }
   res.redirect('/ziyaretciler');
 });

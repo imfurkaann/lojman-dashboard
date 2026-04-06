@@ -12,19 +12,24 @@ function getSafeUserId(req) {
 router.get('/', (req, res) => {
   const statusFilter = req.query.status || '';
   const search = req.query.search || '';
+  const itemFilter = (req.query.item_name || '').trim();
 
   let query = 'SELECT se.*, u.full_name as recorder_name FROM shared_equipment se LEFT JOIN users u ON se.recorded_by = u.id WHERE 1=1';
   const params = [];
 
   if (search) {
     query += ' AND (se.item_name LIKE ? OR se.given_to LIKE ? OR se.room_number LIKE ?)';
-    params.push(`${search}%`, `${search}%`, `${search}%`);
+    params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+  }
+  if (itemFilter) {
+    query += ' AND se.item_name = ?';
+    params.push(itemFilter);
   }
   if (statusFilter) {
     query += ' AND se.status = ?';
     params.push(statusFilter);
   }
-  query += ' ORDER BY se.created_at DESC';
+  query += " ORDER BY CASE WHEN se.status = 'teslim_edildi' THEN 0 ELSE 1 END, se.created_at DESC";
 
   const equipment = db.prepare(query).all(...params);
   const personnel = db.prepare(`
@@ -53,7 +58,7 @@ router.get('/', (req, res) => {
   const activeDeliveredSet = new Set(activeDeliveredRows.map(row => String(row.item_name || '').trim().toLocaleLowerCase('tr-TR')));
   const availableItems = savedItems.filter(item => !activeDeliveredSet.has(String(item.name || '').trim().toLocaleLowerCase('tr-TR')));
 
-  res.render('equipment', { title: 'Eşya Takip', equipment, statusFilter, search, personnel, rooms, savedItems, availableItems });
+  res.render('equipment', { title: 'Eşya Takip', equipment, statusFilter, search, itemFilter, personnel, rooms, savedItems, availableItems });
 });
 
 // Eşya teslim

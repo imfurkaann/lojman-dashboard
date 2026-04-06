@@ -307,7 +307,7 @@
 <div class="card border-0 shadow-sm mb-4">
   <div class="card-body py-2">
     <form method="GET" class="row g-2 align-items-center" id="roomsFilterForm">
-      <div class="col-md-3">
+      <div class="col-md-2">
         <input type="text" class="form-control form-control-sm" id="roomsSearchInput" name="search" placeholder="Oda numarası ara..." value="<%= search %>">
       </div>
       <div class="col-md-2">
@@ -319,16 +319,23 @@
         </select>
       </div>
       <div class="col-md-2">
+        <select class="form-select form-select-sm" name="availability" onchange="this.form.submit()">
+          <option value="">Temizlik Durumu</option>
+          <option value="musait" <%= availabilityFilter === 'musait' ? 'selected' : '' %>>Müsait</option>
+          <option value="temizlenmeli" <%= availabilityFilter === 'temizlenmeli' ? 'selected' : '' %>>Temizlenmesi Gerekiyor</option>
+          <option value="kullanilamaz" <%= availabilityFilter === 'kullanilamaz' ? 'selected' : '' %>>Kullanılamaz</option>
+        </select>
+      </div>
+      <div class="col-md-2">
         <select class="form-select form-select-sm" name="status" onchange="this.form.submit()">
           <option value="">Tüm Durumlar</option>
           <option value="bos" <%= statusFilter === 'bos' ? 'selected' : '' %>>Boş</option>
           <option value="dolu" <%= statusFilter === 'dolu' ? 'selected' : '' %>>Dolu</option>
           <option value="kismi_dolu" <%= statusFilter === 'kismi_dolu' ? 'selected' : '' %>>Kısmi Dolu</option>
-          <option value="bakimda" <%= statusFilter === 'bakimda' ? 'selected' : '' %>>Bakımda</option>
           <option value="depo" <%= statusFilter === 'depo' ? 'selected' : '' %>>Depo</option>
         </select>
       </div>
-      <% if (search || statusFilter || floorFilter) { %>
+      <% if (search || statusFilter || floorFilter || availabilityFilter) { %>
       <div class="col-md-2">
         <a href="/odalar" class="btn btn-sm btn-outline-secondary w-100">Temizle</a>
       </div>
@@ -556,14 +563,11 @@ document.querySelectorAll('.room-card-container').forEach(container => {
 const roomsFilterForm = document.getElementById('roomsFilterForm');
 const roomsSearchInput = document.getElementById('roomsSearchInput');
 if (roomsFilterForm && roomsSearchInput) {
-  let searchDebounceTimer = null;
-  roomsSearchInput.addEventListener('input', () => {
-    if (searchDebounceTimer) {
-      clearTimeout(searchDebounceTimer);
-    }
-    searchDebounceTimer = setTimeout(() => {
+  roomsSearchInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
       roomsFilterForm.submit();
-    }, 250);
+    }
   });
 }
 </script>

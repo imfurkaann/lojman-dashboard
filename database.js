@@ -145,6 +145,7 @@ function initDatabase() {
       phone TEXT,
       visit_date DATETIME DEFAULT CURRENT_TIMESTAMP,
       departure_time DATETIME,
+      deleted_at DATETIME,
       notes TEXT,
       recorded_by INTEGER,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -301,6 +302,13 @@ function runMigrations() {
   }
   if (!hasExitDate) {
     db.exec('ALTER TABLE entry_exit_list ADD COLUMN exit_date DATETIME');
+  }
+
+  const visitorsColumns = db.prepare('PRAGMA table_info(visitors)').all();
+  const hasVisitorDeletedAt = visitorsColumns.some(col => col.name === 'deleted_at');
+  if (!hasVisitorDeletedAt) {
+    db.exec('ALTER TABLE visitors ADD COLUMN deleted_at DATETIME');
+    console.log('Migration: visitors tablosuna deleted_at alanı eklendi');
   }
 
   // room_issues tablosuna demirbaş/oda ayrımı için kolonlar ekle

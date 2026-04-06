@@ -8,6 +8,7 @@ router.get('/', (req, res) => {
   const emptyRooms = db.prepare("SELECT COUNT(*) as count FROM rooms WHERE status = 'bos'").get().count;
   const fullRooms = db.prepare("SELECT COUNT(*) as count FROM rooms WHERE status = 'dolu'").get().count;
   const partialRooms = db.prepare("SELECT COUNT(*) as count FROM rooms WHERE status = 'kismi_dolu'").get().count;
+  const availableRooms = db.prepare("SELECT COUNT(*) as count FROM rooms WHERE status != 'depo' AND COALESCE(availability_status, 'musait') = 'musait'").get().count;
   const cleaningNeededRooms = db.prepare("SELECT COUNT(*) as count FROM rooms WHERE status != 'depo' AND COALESCE(availability_status, 'musait') = 'temizlenmeli'").get().count;
   const unavailableRooms = db.prepare("SELECT COUNT(*) as count FROM rooms WHERE status != 'depo' AND COALESCE(availability_status, 'musait') = 'kullanilamaz'").get().count;
   const storageRooms = db.prepare("SELECT COUNT(*) as count FROM rooms WHERE status = 'depo'").get().count;
@@ -15,9 +16,22 @@ router.get('/', (req, res) => {
   // Personel istatistikleri
   const registeredPersonnel = db.prepare('SELECT COUNT(*) as count FROM personnel').get().count;
 
-  // Bugünkü giriş/çıkış (bekleyenler)
-  const pendingEntries = db.prepare("SELECT COUNT(*) as count FROM entry_exit_list WHERE status = 'bekliyor' AND type = 'giris'").get().count;
-  const pendingExits = db.prepare("SELECT COUNT(*) as count FROM entry_exit_list WHERE status = 'bekliyor' AND type = 'cikis'").get().count;
+  // Lojmanda konaklayan personel (odası olan ve aktif)
+  const occupiedPersonnel = db.prepare("SELECT COUNT(*) as count FROM personnel WHERE room_id IS NOT NULL AND status = 'aktif'").get().count;
+
+  const todayEntries = db.prepare(`
+    SELECT COUNT(*) as count
+    FROM room_stay_history
+    WHERE entry_at IS NOT NULL
+      AND date(entry_at, 'localtime') = date('now', 'localtime')
+  `).get().count;
+
+  const todayExits = db.prepare(`
+    SELECT COUNT(*) as count
+    FROM room_stay_history
+    WHERE exit_at IS NOT NULL
+      AND date(exit_at, 'localtime') = date('now', 'localtime')
+  `).get().count;
 
   // Açık sorunlar
   const openIssues = db.prepare("SELECT COUNT(*) as count FROM room_issues WHERE status = 'acik'").get().count;
@@ -36,8 +50,8 @@ router.get('/', (req, res) => {
 
   res.render('dashboard', {
     title: 'Ana Sayfa',
-    totalRooms, emptyRooms, fullRooms, partialRooms, cleaningNeededRooms, unavailableRooms, storageRooms,
-    registeredPersonnel, pendingEntries, pendingExits,
+    totalRooms, emptyRooms, fullRooms, partialRooms, availableRooms, cleaningNeededRooms, unavailableRooms, storageRooms,
+    registeredPersonnel, occupiedPersonnel, todayEntries, todayExits,
     openIssues, unreturned, recentActivity
   });
 });

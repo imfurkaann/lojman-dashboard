@@ -91,6 +91,14 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...(p
   const registrationDate = registrationDateSource
     ? new Date(registrationDateSource).toLocaleDateString('tr-TR')
     : '-';
+
+  const rawPhoneDigits = String(person.phone || '').replace(/\D/g, '');
+  let phoneDisplay = person.phone || '-';
+  if (rawPhoneDigits.length === 11) {
+    phoneDisplay = `${rawPhoneDigits.slice(0, 1)} ${rawPhoneDigits.slice(1, 4)} ${rawPhoneDigits.slice(4, 7)} ${rawPhoneDigits.slice(7, 9)} ${rawPhoneDigits.slice(9, 11)}`;
+  } else if (rawPhoneDigits.length === 10) {
+    phoneDisplay = `0 ${rawPhoneDigits.slice(0, 3)} ${rawPhoneDigits.slice(3, 6)} ${rawPhoneDigits.slice(6, 8)} ${rawPhoneDigits.slice(8, 10)}`;
+  }
 %>
 
 <!-- Personel Tabs -->
@@ -140,7 +148,7 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...(p
               <strong><%= tcDisplay %></strong>
             </span>
           </td></tr>
-          <tr><td class="text-muted person-info-label">Telefon</td><td><%= person.phone || '-' %></td></tr>
+          <tr><td class="text-muted person-info-label">Telefon</td><td><%= phoneDisplay %></td></tr>
           <tr><td class="text-muted person-info-label">Departman</td><td><%= person.department || '-' %></td></tr>
           <tr><td class="text-muted person-info-label">Oda</td><td>
             <% if (person.room_number) { %>

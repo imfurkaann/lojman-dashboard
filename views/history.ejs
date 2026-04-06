@@ -7,9 +7,9 @@
 <!-- Filtre -->
 <div class="card border-0 shadow-sm mb-4">
   <div class="card-body py-2">
-    <form method="GET" class="row g-2 align-items-center">
+    <form method="GET" class="row g-2 align-items-center" id="historyFilterForm">
       <div class="col-md-3">
-        <input type="text" class="form-control form-control-sm" name="search" placeholder="Açıklama ara..." value="<%= search %>">
+        <input type="text" class="form-control form-control-sm" id="historySearchInput" name="search" placeholder="Açıklama ara..." value="<%= search %>">
       </div>
       <div class="col-md-2">
         <input type="date" class="form-control form-control-sm" name="date" value="<%= dateFilter %>" onchange="this.form.submit()">
@@ -69,3 +69,17 @@
 </div>
 
 <%- include('footer') %>
+
+<script>
+const historyFilterForm = document.getElementById('historyFilterForm');
+const historySearchInput = document.getElementById('historySearchInput');
+
+if (historyFilterForm && historySearchInput) {
+  historySearchInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      historyFilterForm.submit();
+    }
+  });
+}
+</script>

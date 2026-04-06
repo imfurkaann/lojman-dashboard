@@ -20,6 +20,14 @@
         <input type="text" class="form-control form-control-sm" id="equipmentSearchInput" name="search" placeholder="Eşya, kişi veya oda ara..." value="<%= search %>">
       </div>
       <div class="col-md-3">
+        <select class="form-select form-select-sm" name="item_name" onchange="this.form.submit()">
+          <option value="">Tüm Eşyalar</option>
+          <% (savedItems || []).forEach(item => { %>
+            <option value="<%= item.name %>" <%= itemFilter === item.name ? 'selected' : '' %>><%= item.name %></option>
+          <% }) %>
+        </select>
+      </div>
+      <div class="col-md-3">
         <select class="form-select form-select-sm" name="status" onchange="this.form.submit()">
           <option value="">Tüm Durumlar</option>
           <option value="teslim_edildi" <%= statusFilter === 'teslim_edildi' ? 'selected' : '' %>>Teslim Edildi</option>
@@ -27,6 +35,11 @@
           <option value="kayip" <%= statusFilter === 'kayip' ? 'selected' : '' %>>Eşya Bozuldu</option>
         </select>
       </div>
+      <% if (search || statusFilter || itemFilter) { %>
+      <div class="col-md-2">
+        <a href="/esya-takip" class="btn btn-sm btn-outline-secondary w-100">Temizle</a>
+      </div>
+      <% } %>
     </form>
   </div>
 </div>
@@ -187,14 +200,11 @@ const equipmentFilterForm = document.getElementById('equipmentFilterForm');
 const equipmentSearchInput = document.getElementById('equipmentSearchInput');
 
 if (equipmentFilterForm && equipmentSearchInput) {
-  let searchDebounceTimer = null;
-  equipmentSearchInput.addEventListener('input', () => {
-    if (searchDebounceTimer) {
-      clearTimeout(searchDebounceTimer);
-    }
-    searchDebounceTimer = setTimeout(() => {
+  equipmentSearchInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
       equipmentFilterForm.submit();
-    }, 250);
+    }
   });
 }
 

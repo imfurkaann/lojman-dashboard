@@ -337,7 +337,7 @@ router.get('/', (req, res) => {
 
   if (search) {
     query += " AND (p.first_name LIKE ? OR p.last_name LIKE ? OR p.phone LIKE ?)";
-    params.push(`${search}%`, `${search}%`, `${search}%`);
+    params.push(`%${search}%`, `%${search}%`, `%${search}%`);
   }
   if (department) {
     query += ' AND p.department = ?';

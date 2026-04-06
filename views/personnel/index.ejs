@@ -540,16 +540,11 @@ if (typeof flatpickr !== 'undefined') {
 }
 
 if (personnelFilterForm && personnelSearchInput) {
-  let searchDebounceTimer = null;
-
-  personnelSearchInput.addEventListener('input', () => {
-    if (searchDebounceTimer) {
-      clearTimeout(searchDebounceTimer);
-    }
-
-    searchDebounceTimer = setTimeout(() => {
+  personnelSearchInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
       personnelFilterForm.submit();
-    }, 250);
+    }
   });
 }
 
