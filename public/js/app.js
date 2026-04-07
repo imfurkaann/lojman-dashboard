@@ -4,9 +4,26 @@ document.addEventListener('DOMContentLoaded', function () {
   const sidebar = document.getElementById('sidebar');
 
   if (sidebarToggle && sidebar) {
-    sidebarToggle.addEventListener('click', function () {
+    let lastToggleAt = 0;
+
+    const toggleSidebar = function (event) {
+      if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+
+      // Some mobile browsers fire touch + synthetic click; ignore rapid duplicate toggles.
+      const now = Date.now();
+      if (now - lastToggleAt < 320) {
+        return;
+      }
+      lastToggleAt = now;
+
       sidebar.classList.toggle('show');
-    });
+      sidebarToggle.setAttribute('aria-expanded', sidebar.classList.contains('show') ? 'true' : 'false');
+    };
+
+    sidebarToggle.addEventListener('click', toggleSidebar);
 
     // Close sidebar when clicking outside on mobile
     document.addEventListener('click', function (e) {

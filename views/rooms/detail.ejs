@@ -30,10 +30,104 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
 const roomAvailability = room.availability_status || 'musait';
 %>
 
-<div class="d-flex justify-content-between align-items-center mb-4">
-  <div>
+<style>
+  .room-detail-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+  }
+
+  .room-detail-meta {
+    min-width: 0;
+  }
+
+  .room-detail-title {
+    margin: 0.35rem 0 0;
+    line-height: 1.15;
+  }
+
+  .room-detail-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .room-availability-form {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0;
+  }
+
+  .room-availability-form .form-select {
+    min-width: 220px;
+  }
+
+  .room-detail-actions .btn,
+  .room-detail-actions form {
+    margin: 0;
+  }
+
+  .room-detail-tabs .nav-link {
+    white-space: nowrap;
+  }
+
+  @media (max-width: 767.98px) {
+    .room-detail-meta {
+      width: 100%;
+    }
+
+    .room-detail-title {
+      font-size: 2rem;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+
+    .room-detail-actions {
+      width: 100%;
+      justify-content: flex-start;
+    }
+
+    .room-availability-form {
+      width: 100%;
+      align-items: stretch;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+
+    .room-availability-form .form-select {
+      min-width: 0;
+      width: 100%;
+    }
+
+    .room-detail-actions .btn,
+    .room-detail-actions form {
+      flex: 1 1 calc(50% - 0.35rem);
+    }
+
+    .room-detail-actions .btn {
+      width: 100%;
+      white-space: nowrap;
+    }
+
+    .room-detail-tabs {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      overflow-y: hidden;
+      -webkit-overflow-scrolling: touch;
+    }
+  }
+</style>
+
+<div class="room-detail-header">
+  <div class="room-detail-meta">
     <a href="javascript:history.back();" class="text-decoration-none text-muted"><i class="bi bi-arrow-left"></i> Geri Dön</a>
-    <h4 class="mt-1 mb-0">
+    <h4 class="room-detail-title">
       <i class="bi bi-door-open"></i> Oda <%= room.room_number %>
       <% if (room.status === 'bos') { %>
         <span class="badge bg-success fs-6">Boş</span>
@@ -48,10 +142,10 @@ const roomAvailability = room.availability_status || 'musait';
       <% } %>
     </h4>
   </div>
-  <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
-    <form method="POST" action="/odalar/<%= room.id %>/musaitlik-guncelle" class="d-flex align-items-center gap-2">
+  <div class="room-detail-actions">
+    <form method="POST" action="/odalar/<%= room.id %>/musaitlik-guncelle" class="room-availability-form">
       <label class="small text-muted mb-0">Müsaitlik</label>
-      <select class="form-select form-select-sm" name="availability_status" style="min-width: 220px;" onchange="this.form.submit()">
+      <select class="form-select form-select-sm" name="availability_status" onchange="this.form.submit()">
         <option value="musait" <%= roomAvailability === 'musait' ? 'selected' : '' %>>Oda Müsait</option>
         <option value="temizlenmeli" <%= roomAvailability === 'temizlenmeli' ? 'selected' : '' %>>Temizlenmesi Gerekiyor</option>
         <option value="kullanilamaz" <%= roomAvailability === 'kullanilamaz' ? 'selected' : '' %>>Oda Kullanılamaz</option>
@@ -105,7 +199,7 @@ const roomAvailability = room.availability_status || 'musait';
 </div>
 
 <!-- Tabs -->
-<ul class="nav nav-tabs mb-3" role="tablist">
+<ul class="nav nav-tabs mb-3 room-detail-tabs" role="tablist">
   <li class="nav-item">
     <a class="nav-link active" data-bs-toggle="tab" href="#personeller">
       <i class="bi bi-people"></i> Personeller (<%= occupants.length %>)

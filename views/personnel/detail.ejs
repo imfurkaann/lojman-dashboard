@@ -29,6 +29,40 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...(p
 %>
 
 <style>
+  .person-detail-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+  }
+
+  .person-detail-meta {
+    min-width: 0;
+  }
+
+  .person-detail-name {
+    margin: 0.35rem 0 0;
+    line-height: 1.15;
+  }
+
+  .person-detail-actions {
+    display: flex;
+    gap: 0.45rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .person-detail-actions .btn,
+  .person-detail-actions form {
+    margin: 0;
+  }
+
+  .person-detail-tabs .nav-link {
+    white-space: nowrap;
+  }
+
   .person-info-table td {
     padding-top: 0.35rem;
     padding-bottom: 0.35rem;
@@ -45,12 +79,54 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...(p
     font-size: 0.8rem;
     color: #6c757d;
   }
+
+  @media (max-width: 767.98px) {
+    .person-detail-header {
+      gap: 0.75rem;
+    }
+
+    .person-detail-meta {
+      width: 100%;
+    }
+
+    .person-detail-name {
+      font-size: 2rem;
+      max-width: 14ch;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+
+    .person-detail-actions {
+      width: 100%;
+      justify-content: flex-start;
+    }
+
+    .person-detail-actions .btn,
+    .person-detail-actions form {
+      flex: 1 1 calc(50% - 0.3rem);
+    }
+
+    .person-detail-actions .btn {
+      width: 100%;
+      white-space: nowrap;
+      font-size: 0.92rem;
+      padding-left: 0.6rem;
+      padding-right: 0.6rem;
+    }
+
+    .person-detail-tabs {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      overflow-y: hidden;
+      -webkit-overflow-scrolling: touch;
+    }
+  }
 </style>
 
-<div class="d-flex justify-content-between align-items-center mb-4">
-  <div>
+<div class="person-detail-header">
+  <div class="person-detail-meta">
     <a href="javascript:history.back();" class="text-decoration-none text-muted"><i class="bi bi-arrow-left"></i> Geri Dön</a>
-    <h4 class="mt-1 mb-0">
+    <h4 class="person-detail-name">
       <i class="bi bi-person"></i> <%= person.first_name %> <%= person.last_name %>
       <% if (person.status === 'aktif') { %>
         <span class="badge bg-success fs-6">Aktif</span>
@@ -61,7 +137,7 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...(p
       <% } %>
     </h4>
   </div>
-  <div>
+  <div class="person-detail-actions">
     <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#editPersonModal">
       <i class="bi bi-pencil"></i> Düzenle
     </button>
@@ -102,7 +178,7 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...(p
 %>
 
 <!-- Personel Tabs -->
-<ul class="nav nav-tabs mb-3" role="tablist">
+<ul class="nav nav-tabs mb-3 person-detail-tabs" role="tablist">
   <li class="nav-item">
     <a class="nav-link active" data-bs-toggle="tab" href="#kisisel-bilgi">
       <i class="bi bi-person-vcard"></i> Kişisel Bilgi

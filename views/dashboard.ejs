@@ -36,6 +36,8 @@
     font-size: 0.88rem;
     line-height: 1.15;
     min-height: 2.35em;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 
   .dashboard-room-card {
@@ -50,6 +52,8 @@
     font-size: 0.78rem;
     line-height: 1.15;
     white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
     max-width: calc(100% - 3rem);
   }
 
@@ -84,6 +88,27 @@
     .dashboard-top-grid,
     .dashboard-bottom-grid {
       grid-template-columns: 1fr;
+    }
+
+    .dashboard-metric-card .card-body {
+      padding: 0.8rem 0.7rem;
+    }
+
+    .dashboard-metric-icon {
+      font-size: 1.55rem;
+    }
+
+    .dashboard-metric-value {
+      font-size: 1.55rem;
+    }
+
+    .dashboard-metric-label {
+      font-size: 0.82rem;
+      min-height: auto;
+    }
+
+    .dashboard-room-label {
+      font-size: 0.74rem;
     }
   }
 </style>

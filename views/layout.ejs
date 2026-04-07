@@ -67,12 +67,15 @@
 
     <!-- Main Content -->
     <div class="main-content flex-grow-1">
-      <nav class="navbar navbar-light bg-white shadow-sm px-4 mb-0">
+      <nav class="navbar navbar-light bg-white shadow-sm px-3 px-md-4 mb-0">
         <button class="btn btn-link text-dark d-md-none" id="sidebarToggle">
           <i class="bi bi-list fs-4"></i>
         </button>
-        <span class="navbar-text ms-auto text-muted small">
+        <span class="navbar-text ms-auto text-muted small d-none d-sm-inline">
           <%= new Date().toLocaleDateString('tr-TR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) %>
+        </span>
+        <span class="navbar-text ms-auto text-muted small d-sm-none">
+          <%= new Date().toLocaleDateString('tr-TR', { year: 'numeric', month: '2-digit', day: '2-digit' }) %>
         </span>
       </nav>
       <div class="container-fluid p-4">
