@@ -335,6 +335,9 @@
           <option value="depo" <%= statusFilter === 'depo' ? 'selected' : '' %>>Depo</option>
         </select>
       </div>
+      <div class="col-md-2">
+        <button type="submit" class="btn btn-sm btn-primary w-100">Filtrele</button>
+      </div>
       <% if (search || statusFilter || floorFilter || availabilityFilter) { %>
       <div class="col-md-2">
         <a href="/odalar" class="btn btn-sm btn-outline-secondary w-100">Temizle</a>

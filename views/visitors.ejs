@@ -23,6 +23,9 @@
       <div class="col-md-2">
         <input type="date" class="form-control form-control-sm" name="date" value="<%= dateFilter %>" onchange="this.form.submit()">
       </div>
+      <div class="col-md-2">
+        <button type="submit" class="btn btn-sm btn-primary w-100">Filtrele</button>
+      </div>
       <% if (search || dateFilter) { %>
       <div class="col-md-2">
         <a href="/ziyaretciler" class="btn btn-sm btn-outline-secondary w-100">Temizle</a>

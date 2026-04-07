@@ -64,13 +64,16 @@
           <% }) %>
         </select>
       </div>
-      <div class="col-md-3">
+      <div class="col-md-2">
         <select class="form-select form-select-sm" name="status" onchange="this.form.submit()">
           <option value="">Tüm Durumlar</option>
           <option value="teslim_edildi" <%= statusFilter === 'teslim_edildi' ? 'selected' : '' %>>Teslim Edildi</option>
           <option value="iade_edildi" <%= statusFilter === 'iade_edildi' ? 'selected' : '' %>>Teslim Alındı</option>
           <option value="kayip" <%= statusFilter === 'kayip' ? 'selected' : '' %>>Eşya Bozuldu</option>
         </select>
+      </div>
+      <div class="col-md-2">
+        <button type="submit" class="btn btn-sm btn-primary w-100">Filtrele</button>
       </div>
       <% if (search || statusFilter || itemFilter) { %>
       <div class="col-md-2">
