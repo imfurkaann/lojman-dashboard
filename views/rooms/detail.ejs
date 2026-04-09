@@ -572,8 +572,10 @@ const roomAvailability = room.availability_status || 'musait';
               <% const personName = `${h.first_name || '-'} ${h.last_name || ''}`.trim(); %>
               <% const entryText = h.entry_at ? new Date(h.entry_at).toLocaleString('tr-TR') : '-'; %>
               <% const exitText = h.exit_at ? new Date(h.exit_at).toLocaleString('tr-TR') : '-'; %>
-              <% const entryDateValue = h.entry_at ? new Date(h.entry_at).toISOString().slice(0, 10) : ''; %>
-              <% const exitDateValue = h.exit_at ? new Date(h.exit_at).toISOString().slice(0, 10) : ''; %>
+              <% const entryDateObj = h.entry_at ? new Date(h.entry_at) : null; %>
+              <% const exitDateObj = h.exit_at ? new Date(h.exit_at) : null; %>
+              <% const entryDateValue = entryDateObj ? `${entryDateObj.getFullYear()}-${String(entryDateObj.getMonth() + 1).padStart(2, '0')}-${String(entryDateObj.getDate()).padStart(2, '0')}` : ''; %>
+              <% const exitDateValue = exitDateObj ? `${exitDateObj.getFullYear()}-${String(exitDateObj.getMonth() + 1).padStart(2, '0')}-${String(exitDateObj.getDate()).padStart(2, '0')}` : ''; %>
               <% const filterText = `${personName} ${h.department || ''} ${entryText} ${exitText}`.toLowerCase(); %>
               <tr data-entry-date="<%= entryDateValue %>" data-exit-date="<%= exitDateValue %>">
                 <td data-history-filter="<%= filterText %>"><strong><%= personName || '-' %></strong></td>

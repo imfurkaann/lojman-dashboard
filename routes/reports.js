@@ -3,6 +3,13 @@ const router = express.Router();
 const ExcelJS = require('exceljs');
 const { db } = require('../database');
 
+function getLocalDateStamp(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 function getKeyShortages() {
   const rooms = db.prepare(`
     SELECT
@@ -345,7 +352,7 @@ router.get('/oda-sorunlari/excel', async (req, res, next) => {
       sheet.addRow(entry);
     });
 
-    const stamp = new Date().toISOString().slice(0, 10);
+    const stamp = getLocalDateStamp();
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="oda-sorunlari-raporu-${stamp}.xlsx"`);
 
@@ -373,7 +380,7 @@ router.get('/anahtar-eksikleri/excel', async (req, res, next) => {
     sheet.getRow(1).font = { bold: true };
     shortages.forEach(row => sheet.addRow(row));
 
-    const stamp = new Date().toISOString().slice(0, 10);
+    const stamp = getLocalDateStamp();
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="anahtar-eksik-raporu-${stamp}.xlsx"`);
 
@@ -412,7 +419,7 @@ router.get('/anlik-konaklayanlar/excel', async (req, res, next) => {
       row.alignment = { wrapText: true, vertical: 'top' };
     });
 
-    const stamp = new Date().toISOString().slice(0, 10);
+    const stamp = getLocalDateStamp();
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="anlik-konaklayanlar-raporu-${stamp}.xlsx"`);
 
@@ -663,7 +670,7 @@ router.get('/personel-sikayetleri/excel', async (req, res) => {
     summaryRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2EFDA' } };
 
     // Dosya indir
-    const fileName = `personel-sikayetleri-raporu-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    const fileName = `personel-sikayetleri-raporu-${getLocalDateStamp()}.xlsx`;
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
 

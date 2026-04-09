@@ -21,7 +21,7 @@ router.get('/', (req, res) => {
     params.push(`%${search}%`, `%${search}%`, `%${search}%`);
   }
   if (dateFilter) {
-    query += ' AND date(v.visit_date) = ?';
+    query += " AND date(v.visit_date, 'localtime') = ?";
     params.push(dateFilter);
   }
   query += ' ORDER BY v.visit_date DESC';

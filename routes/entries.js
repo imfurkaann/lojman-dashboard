@@ -2,6 +2,13 @@ const express = require('express');
 const router = express.Router();
 const { db, logActivity } = require('../database');
 
+function getLocalDateStamp(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 function getSafeUserId(req) {
   const rawUserId = req.session && req.session.user ? req.session.user.id : null;
   const actorUser = rawUserId ? db.prepare('SELECT id FROM users WHERE id = ?').get(rawUserId) : null;
@@ -10,7 +17,7 @@ function getSafeUserId(req) {
 
 // Giriş/Çıkış listesi
 router.get('/', (req, res) => {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getLocalDateStamp();
   const selectedDate = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date || ''))
     ? String(req.query.date)
     : today;
@@ -72,7 +79,7 @@ router.post('/ekle', (req, res) => {
   const normalizedEntryDate = type === 'giris' ? normalizedExpectedDate : null;
   const normalizedExitDate = type === 'cikis' ? normalizedExpectedDate : null;
 
-  const plannedDate = normalizedExpectedDate || new Date().toISOString().slice(0, 10);
+  const plannedDate = normalizedExpectedDate || getLocalDateStamp();
 
   db.prepare("INSERT INTO entry_exit_list (person_name, type, planned_date, notes, added_by, entry_date, exit_date) VALUES (?, ?, ?, ?, ?, ?, ?)").run(
     person_name,

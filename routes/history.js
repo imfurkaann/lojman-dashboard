@@ -16,7 +16,7 @@ router.get('/', (req, res) => {
     params.push(`%${search}%`, `%${search}%`);
   }
   if (dateFilter) {
-    query += ' AND date(al.created_at) = ?';
+    query += " AND date(al.created_at, 'localtime') = ?";
     params.push(dateFilter);
   }
   if (typeFilter) {

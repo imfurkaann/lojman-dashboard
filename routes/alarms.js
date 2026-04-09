@@ -16,7 +16,7 @@ router.get('/', (req, res) => {
   const params = [];
 
   if (dateFilter) {
-    query += ' AND date(fa.alarm_time) = ?';
+    query += " AND date(fa.alarm_time, 'localtime') = ?";
     params.push(dateFilter);
   }
   query += ' ORDER BY fa.alarm_time DESC';

@@ -348,27 +348,27 @@ router.get('/', (req, res) => {
     params.push(status);
   }
   if (createdAtFrom) {
-    query += ' AND DATE(p.created_at) >= DATE(?)';
+    query += " AND DATE(p.created_at, 'localtime') >= DATE(?)";
     params.push(createdAtFrom);
   }
   if (createdAtTo) {
-    query += ' AND DATE(p.created_at) <= DATE(?)';
+    query += " AND DATE(p.created_at, 'localtime') <= DATE(?)";
     params.push(createdAtTo);
   }
   if (checkInFrom) {
-    query += ' AND p.check_in_date IS NOT NULL AND DATE(p.check_in_date) >= DATE(?)';
+    query += " AND p.check_in_date IS NOT NULL AND DATE(p.check_in_date, 'localtime') >= DATE(?)";
     params.push(checkInFrom);
   }
   if (checkInTo) {
-    query += ' AND p.check_in_date IS NOT NULL AND DATE(p.check_in_date) <= DATE(?)';
+    query += " AND p.check_in_date IS NOT NULL AND DATE(p.check_in_date, 'localtime') <= DATE(?)";
     params.push(checkInTo);
   }
   if (checkOutFrom) {
-    query += ' AND p.check_out_date IS NOT NULL AND DATE(p.check_out_date) >= DATE(?)';
+    query += " AND p.check_out_date IS NOT NULL AND DATE(p.check_out_date, 'localtime') >= DATE(?)";
     params.push(checkOutFrom);
   }
   if (checkOutTo) {
-    query += ' AND p.check_out_date IS NOT NULL AND DATE(p.check_out_date) <= DATE(?)';
+    query += " AND p.check_out_date IS NOT NULL AND DATE(p.check_out_date, 'localtime') <= DATE(?)";
     params.push(checkOutTo);
   }
   query += ' ORDER BY p.first_name, p.last_name';
