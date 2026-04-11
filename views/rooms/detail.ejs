@@ -751,7 +751,7 @@ const roomAvailability = room.availability_status || 'musait';
                   <small class="text-muted d-block">İmzalandı mı?</small>
                 </div>
                 <div class="form-check m-0">
-                  <input class="form-check-input" type="checkbox" id="formSignedCheck" name="form_signed">
+                  <input class="form-check-input" type="checkbox" id="formSignedCheck" name="form_signed" required>
                   <label class="form-check-label" for="formSignedCheck">Evet</label>
                 </div>
               </div>
@@ -877,7 +877,7 @@ const roomAvailability = room.availability_status || 'musait';
                   <small class="text-muted d-block">İmzalandı mı?</small>
                 </div>
                 <div class="form-check m-0">
-                  <input class="form-check-input" type="checkbox" id="assignFormSignedCheck" name="form_signed">
+                  <input class="form-check-input" type="checkbox" id="assignFormSignedCheck" name="form_signed" required>
                   <label class="form-check-label" for="assignFormSignedCheck">Evet</label>
                 </div>
               </div>
@@ -1474,6 +1474,12 @@ document.addEventListener('DOMContentLoaded', function () {
           if (assignAllowCleaningOverrideInput) assignAllowCleaningOverrideInput.value = '1';
         }
 
+        if (!form.querySelector('#assignFormSignedCheck')?.checked) {
+          e.preventDefault();
+          alert('Zimmet formu zorunludur.');
+          return;
+        }
+
         const handoverData = {
           form_signed: form.querySelector('#assignFormSignedCheck').checked,
           key_delivered: form.querySelector('#assignKeyDeliveredCheck').checked,
@@ -1715,6 +1721,12 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
           }
           if (addAllowCleaningOverrideInput) addAllowCleaningOverrideInput.value = '1';
+        }
+
+        if (!addForm.querySelector('#formSignedCheck')?.checked) {
+          event.preventDefault();
+          alert('Zimmet formu zorunludur.');
+          return;
         }
 
         const handoverData = {

@@ -380,7 +380,7 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
                   <small class="text-muted d-block">İmzalandı mı?</small>
                 </div>
                 <div class="form-check m-0">
-                  <input class="form-check-input" type="checkbox" id="formSignedCheck" name="form_signed">
+                  <input class="form-check-input" type="checkbox" id="formSignedCheck" name="form_signed" required>
                   <label class="form-check-label" for="formSignedCheck">Evet</label>
                 </div>
               </div>
@@ -447,7 +447,7 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
                   <small class="text-muted d-block">İmzalandı mı?</small>
                 </div>
                 <div class="form-check m-0">
-                  <input class="form-check-input" type="checkbox" id="assignFormSignedCheck" name="form_signed">
+                  <input class="form-check-input" type="checkbox" id="assignFormSignedCheck" name="form_signed" required>
                   <label class="form-check-label" for="assignFormSignedCheck">Evet</label>
                 </div>
               </div>
@@ -1164,6 +1164,11 @@ if (assignHandoverSection) {
 
 document.querySelector('#addPersonnelModal form').addEventListener('submit', function(e) {
   e.preventDefault();
+
+  if (!document.getElementById('formSignedCheck')?.checked) {
+    alert('Zimmet formu zorunludur.');
+    return;
+  }
   
   const roomId = roomSelectForHandover.value;
   if (roomId && !ensureAssignmentAvailability(roomId, allowCleaningOverrideInput)) {
@@ -1260,6 +1265,12 @@ if (assignRoomForm) {
   assignRoomForm.addEventListener('submit', function(e) {
     const roomId = assignRoomSelect ? assignRoomSelect.value : '';
     if (!roomId) return;
+
+    if (!document.getElementById('assignFormSignedCheck')?.checked) {
+      e.preventDefault();
+      alert('Zimmet formu zorunludur.');
+      return;
+    }
 
     if (!ensureAssignmentAvailability(roomId, assignAllowCleaningOverrideInput)) {
       e.preventDefault();

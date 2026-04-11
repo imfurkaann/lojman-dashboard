@@ -517,6 +517,9 @@ router.post('/:id/oda-ata', (req, res) => {
     } catch (_) {
       handoverData = null;
     }
+    if (!handoverData || !handoverData.form_signed) {
+      return res.status(400).send('Zimmet formu zorunludur.');
+    }
     const handoverItems = handoverData && Array.isArray(handoverData.items) ? handoverData.items : [];
     const keyDeliveredValue = handoverData && handoverData.key_delivered ? 1 : 0;
 
@@ -581,7 +584,7 @@ router.post('/ekle', async (req, res) => {
     const uploadedPhotoPath = req.file ? `/uploads/personnel/${req.file.filename}` : null;
     const capturedPhotoPath = uploadedPhotoPath ? null : saveCapturedPhotoData(req.body.captured_photo_data);
     const photoPath = uploadedPhotoPath || capturedPhotoPath;
-    const isFormSigned = form_signed === 'on' ? 1 : 0;
+    const isFormSigned = ['on', '1', 'true'].includes(String(form_signed || '').toLowerCase()) ? 1 : 0;
     const rawUserId = req.session && req.session.user ? req.session.user.id : null;
     const actorUser = rawUserId ? db.prepare('SELECT id FROM users WHERE id = ?').get(rawUserId) : null;
     const safeUserId = actorUser ? actorUser.id : null;
@@ -613,6 +616,16 @@ router.post('/ekle', async (req, res) => {
       return res.status(500).send('TC kaydı sırasında hata oluştu.');
     }
     const tcFingerprint = createTcFingerprint(normalizedTc);
+
+    if (!isFormSigned) {
+      if (req.file) {
+        fs.unlink(path.join(uploadDir, req.file.filename), () => {});
+      }
+      if (wantsJson) {
+        return res.status(400).json({ error: 'Zimmet formu zorunludur.' });
+      }
+      return res.status(400).send('Zimmet formu zorunludur.');
+    }
 
   // TC numarası kontrolü - tüm personelleri getir ve şifreli TC ile eşleştir
     const duplicatePerson = await findDuplicatePersonnelByTc(normalizedTc);
@@ -844,6 +857,13 @@ router.post('/ekle-ve-ata', async (req, res) => {
     }
     const keyDeliveredValue = handoverData && handoverData.key_delivered ? 1 : 0;
     let syncedKeyQty = null;
+
+    if (!handoverData || !handoverData.form_signed) {
+      if (req.file) {
+        fs.unlink(path.join(uploadDir, req.file.filename), () => {});
+      }
+      return res.status(400).send('Zimmet formu zorunludur.');
+    }
 
     // 1. Personeli oluştur
     const checkInAt = formatLocalTimestamp();

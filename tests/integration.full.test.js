@@ -147,6 +147,17 @@ test('full user interaction flow works end-to-end', async () => {
     department: 'Teknik Servis',
     tc_number: '10000000146'
   });
+  assert.equal(response.status, 400, 'Personnel create without signed handover should be rejected');
+
+  response = await postForm('/personel/ekle', {
+    first_name: 'Ali',
+    last_name: 'Deneme',
+    gender: 'erkek',
+    phone: '05000000001',
+    department: 'Teknik Servis',
+    tc_number: '10000000146',
+    form_signed: 'on'
+  });
   assert.equal(response.status, 200, 'Personnel create should complete');
 
   let personA = db.prepare("SELECT * FROM personnel WHERE first_name = 'Ali' AND last_name = 'Deneme' ORDER BY id DESC LIMIT 1").get();
@@ -247,7 +258,8 @@ test('full user interaction flow works end-to-end', async () => {
     tc_number: '10000000154',
     room_id: roomA.id,
     handover_payload: handoverPayloadB,
-    allow_cleaning_override: '1'
+    allow_cleaning_override: '1',
+    form_signed: 'on'
   });
   assert.equal(response.status, 200, 'Create-and-assign personnel flow should complete');
 

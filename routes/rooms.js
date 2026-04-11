@@ -485,6 +485,9 @@ router.post('/:id/personel-ata', (req, res) => {
     } catch (_) {
       handoverData = null;
     }
+    if (!handoverData || !handoverData.form_signed) {
+      return res.redirect(`/odalar/${roomId}?error=` + encodeURIComponent('Zimmet formu zorunludur.'));
+    }
 
     const keyDeliveredValue = ((handoverData && handoverData.key_delivered) || req.body.key_delivered === '1') ? 1 : 0;
     const safeHandoverData = handoverData || {
@@ -858,7 +861,7 @@ router.post('/:id/personel-ekle', upload.single('photo'), async (req, res) => {
   }
 
   const photoPath = req.file ? `/uploads/personnel/${req.file.filename}` : null;
-  const isFormSigned = form_signed === 'on' ? 1 : 0;
+  const isFormSigned = ['on', '1', 'true'].includes(String(form_signed || '').toLowerCase()) ? 1 : 0;
   const tcFingerprint = createTcFingerprint(normalizedTc);
 
   // TC kimlik numarası zorunludur
@@ -869,6 +872,15 @@ router.post('/:id/personel-ekle', upload.single('photo'), async (req, res) => {
       fs.unlink(path.join(__dirname, '..', 'public', photoPath), () => {});
     }
     return res.status(400).send('TC kimlik no zorunludur.');
+  }
+
+  if (!isFormSigned) {
+    if (req.file) {
+      const path = require('path');
+      const fs = require('fs');
+      fs.unlink(path.join(__dirname, '..', 'public', photoPath), () => {});
+    }
+    return res.status(400).send('Zimmet formu zorunludur.');
   }
 
   // TC numarası kontrolü (hızlı fingerprint eşleşmesi)
