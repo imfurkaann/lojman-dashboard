@@ -3,7 +3,7 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const { db, logActivity, updateRoomStatus, syncRoomKeyStock, recordRoomEntry, recordRoomExit } = require('../database');
+const { db, logActivity, updateRoomStatus, syncRoomKeyStock, recordRoomEntry, recordRoomExit, formatLocalTimestamp } = require('../database');
 const { encryptTcNumber, createTcFingerprint, verifyTcNumber, blurTcNumber } = require('../middleware/tc-encryption');
 
 const INVENTORY_ISSUE_TAGS = ['eksik', 'arizali', 'kirik', 'calismiyor', 'kayip', 'diger'];
@@ -233,7 +233,7 @@ function syncHandoverIssuesForRoom(roomId, handoverItems, safeUserId, reasonText
 
     if (item.delivered) {
       if (latestOpenIssue && latestOpenIssue.id) {
-        db.prepare("UPDATE room_issues SET status = 'cozuldu', resolved_at = CURRENT_TIMESTAMP WHERE id = ?").run(latestOpenIssue.id);
+        db.prepare("UPDATE room_issues SET status = 'cozuldu', resolved_at = ? WHERE id = ?").run(formatLocalTimestamp(), latestOpenIssue.id);
       }
       syncInventoryConditionWithOpenIssues(roomId, itemName);
       return;
@@ -500,7 +500,7 @@ router.post('/:id/oda-ata', (req, res) => {
     const keyDeliveredValue = handoverData && handoverData.key_delivered ? 1 : 0;
 
     // 1. Personelin odasını güncelle
-    const checkInAt = new Date().toISOString();
+    const checkInAt = formatLocalTimestamp();
     db.prepare('UPDATE personnel SET room_id = ?, status = ?, check_in_date = ?, entry_handover_payload = ?, key_delivered = ?, checkout_key_returned = NULL, checkout_room_id = NULL WHERE id = ?').run(room_id, 'aktif', checkInAt, handover_payload || null, keyDeliveredValue, personnelId);
     recordRoomEntry(personnelId, room_id, checkInAt);
     logActivity('personel_atama', `Oda ${room.room_number}, ${personnel.first_name} ${personnel.last_name} adlı personele atandı.`, null, safeUserId);
@@ -510,7 +510,7 @@ router.post('/:id/oda-ata', (req, res) => {
 
     // 3. Zimmet formunu kaydet
     if (handoverData && handoverData.form_signed) {
-      db.prepare('INSERT INTO handover_forms (personnel_id, room_id, form_type, is_signed, signed_at) VALUES (?, ?, ?, ?, ?)').run(personnelId, room_id, 'giris', 1, new Date().toISOString());
+      db.prepare('INSERT INTO handover_forms (personnel_id, room_id, form_type, is_signed, signed_at) VALUES (?, ?, ?, ?, ?)').run(personnelId, room_id, 'giris', 1, formatLocalTimestamp());
     }
 
     // 4. Demirbaşları kaydet
@@ -521,7 +521,7 @@ router.post('/:id/oda-ata', (req, res) => {
         item.name,
         item.delivered ? 'sağlam' : (item.tag || 'teslim edilmedi'),
         item.delivered ? null : item.description,
-        new Date().toISOString()
+        formatLocalTimestamp()
       );
     });
     syncHandoverIssuesForRoom(Number(room_id), handoverItems, safeUserId, 'oda tahsisinde sağlam teslim edilmedi.');
@@ -636,8 +636,8 @@ router.post('/ekle', async (req, res) => {
       }
     }
     const nextStatus = nextRoomId ? 'aktif' : 'bosta';
-    const nextCheckInDate = nextRoomId ? new Date().toISOString() : null;
-    const roomChangeAt = new Date().toISOString();
+    const nextCheckInDate = nextRoomId ? formatLocalTimestamp() : null;
+    const roomChangeAt = formatLocalTimestamp();
     const tcLastFour = normalizedTc.slice(-4);
     db.prepare('UPDATE personnel SET first_name = ?, last_name = ?, gender = ?, phone = ?, department = ?, room_id = ?, status = ?, check_in_date = ?, photo_path = ?, form_signed = ?, entry_handover_payload = ?, key_delivered = ?, tc_number_encrypted = ?, tc_number_fingerprint = ?, tc_last_four = ? WHERE id = ?').run(
       first_name, last_name, gender, phone || null, department || null,
@@ -692,7 +692,7 @@ router.post('/ekle', async (req, res) => {
       }
     }
     const nextStatus = parsedRoomId ? 'aktif' : 'bosta';
-    const checkInDate = parsedRoomId ? new Date().toISOString() : null;
+    const checkInDate = parsedRoomId ? formatLocalTimestamp() : null;
     const tcLastFour = normalizedTc.slice(-4);
     const result = db.prepare('INSERT INTO personnel (first_name, last_name, gender, phone, department, room_id, status, tc_number_encrypted, tc_number_fingerprint, tc_last_four, photo_path, form_signed, entry_handover_payload, key_delivered, check_in_date, added_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
       first_name, last_name, gender, phone || null, department || null,
@@ -709,7 +709,7 @@ router.post('/ekle', async (req, res) => {
       safeUserId
     );
     if (parsedRoomId) {
-      recordRoomEntry(result.lastInsertRowid, parsedRoomId, checkInDate || new Date().toISOString());
+      recordRoomEntry(result.lastInsertRowid, parsedRoomId, checkInDate || formatLocalTimestamp());
     }
 
     if (room_id) {
@@ -825,7 +825,7 @@ router.post('/ekle-ve-ata', async (req, res) => {
     let syncedKeyQty = null;
 
     // 1. Personeli oluştur
-    const checkInAt = new Date().toISOString();
+    const checkInAt = formatLocalTimestamp();
     const tcLastFour = normalizedTc.slice(-4);
     const insertPersonnelResult = db.prepare(
       'INSERT INTO personnel (first_name, last_name, gender, phone, department, tc_number_encrypted, tc_number_fingerprint, tc_last_four, photo_path, room_id, entry_handover_payload, key_delivered, status, check_in_date, added_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
@@ -845,7 +845,7 @@ router.post('/ekle-ve-ata', async (req, res) => {
 
       // Zimmet formu
       if (handoverData.form_signed) {
-        db.prepare('INSERT INTO handover_forms (personnel_id, room_id, form_type, is_signed, signed_at) VALUES (?, ?, ?, ?, ?)').run(personnelId, parsedRoomId, 'giris', 1, new Date().toISOString());
+        db.prepare('INSERT INTO handover_forms (personnel_id, room_id, form_type, is_signed, signed_at) VALUES (?, ?, ?, ?, ?)').run(personnelId, parsedRoomId, 'giris', 1, formatLocalTimestamp());
       }
 
       // Demirbaşlar
@@ -857,7 +857,7 @@ router.post('/ekle-ve-ata', async (req, res) => {
           item.name,
           item.delivered ? 'sağlam' : (item.tag || 'teslim edilmedi'),
           item.delivered ? null : item.description,
-          new Date().toISOString()
+          formatLocalTimestamp()
         );
       });
       syncHandoverIssuesForRoom(parsedRoomId, handoverItems, safeUserId, 'oda tahsisinde sağlam teslim edilmedi.');
@@ -1208,7 +1208,7 @@ router.post('/:id/oda-degistir', (req, res) => {
 
   const nextStatus = parsedNewRoomId ? 'aktif' : 'bosta';
 
-  const roomChangeAt = new Date().toISOString();
+  const roomChangeAt = formatLocalTimestamp();
   const transferResult = db.transaction(() => {
     let oldRoomKeyQty;
     let newRoomKeyQty;
@@ -1329,7 +1329,7 @@ router.post('/:id/cikis', (req, res) => {
   const oldRoomId = person.room_id;
   const checkoutFormSigned = parsedCheckout && (parsedCheckout.form_signed === true || parsedCheckout.form_signed === 1 || parsedCheckout.form_signed === '1') ? 1 : 0;
 
-  const checkoutAt = new Date().toISOString();
+  const checkoutAt = formatLocalTimestamp();
   const checkoutTx = db.transaction(() => {
     db.prepare("UPDATE personnel SET status = 'cikis_yapti', check_out_date = ?, checkout_room_id = ?, room_id = NULL, checkout_handover_payload = ?, checkout_key_returned = ? WHERE id = ?").run(
       checkoutAt,
@@ -1368,7 +1368,7 @@ router.post('/:id/cikis', (req, res) => {
 
         if (item.delivered) {
           if (latestOpenIssue && latestOpenIssue.id) {
-            db.prepare("UPDATE room_issues SET status = 'cozuldu', resolved_at = CURRENT_TIMESTAMP WHERE id = ?").run(latestOpenIssue.id);
+            db.prepare("UPDATE room_issues SET status = 'cozuldu', resolved_at = ? WHERE id = ?").run(formatLocalTimestamp(), latestOpenIssue.id);
           }
           syncInventoryConditionWithOpenIssues(oldRoomId, itemName);
           return;

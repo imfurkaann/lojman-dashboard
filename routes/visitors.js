@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { db, logActivity } = require('../database');
+const { db, logActivity, formatLocalTimestamp } = require('../database');
 
 function getSafeUserId(req) {
   const rawUserId = req.session && req.session.user ? req.session.user.id : null;
@@ -34,8 +34,8 @@ router.get('/', (req, res) => {
 router.post('/ekle', (req, res) => {
   const { visitor_name, purpose, company, phone, notes } = req.body;
   const safeUserId = getSafeUserId(req);
-  db.prepare('INSERT INTO visitors (visitor_name, purpose, company, phone, notes, recorded_by, visit_date) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)').run(
-    visitor_name, purpose, company || null, phone || null, notes || null, safeUserId
+  db.prepare('INSERT INTO visitors (visitor_name, purpose, company, phone, notes, recorded_by, visit_date) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+    visitor_name, purpose, company || null, phone || null, notes || null, safeUserId, formatLocalTimestamp()
   );
   logActivity('ziyaretci_giris', `Ziyaretçi: ${visitor_name} - Amaç: ${purpose}`, company ? `Firma: ${company}` : null, safeUserId);
   res.redirect('/ziyaretciler');
@@ -46,7 +46,7 @@ router.post('/:id/cikis', (req, res) => {
   const safeUserId = getSafeUserId(req);
   const visitor = db.prepare('SELECT * FROM visitors WHERE id = ?').get(req.params.id);
   if (visitor) {
-    db.prepare('UPDATE visitors SET departure_time = CURRENT_TIMESTAMP WHERE id = ?').run(req.params.id);
+    db.prepare('UPDATE visitors SET departure_time = ? WHERE id = ?').run(formatLocalTimestamp(), req.params.id);
     logActivity('ziyaretci_cikis', `Ziyaretçi çıkış: ${visitor.visitor_name}`, null, safeUserId);
   }
   res.redirect('/ziyaretciler');
@@ -71,7 +71,7 @@ router.post('/:id/sil', (req, res) => {
   const safeUserId = getSafeUserId(req);
   const visitor = db.prepare('SELECT * FROM visitors WHERE id = ?').get(req.params.id);
   if (visitor && !visitor.deleted_at) {
-    db.prepare('UPDATE visitors SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?').run(req.params.id);
+    db.prepare('UPDATE visitors SET deleted_at = ? WHERE id = ?').run(formatLocalTimestamp(), req.params.id);
     logActivity('ziyaretci_sil_soft', `Ziyaretçi kaydı soft silindi: ${visitor.visitor_name}`, null, safeUserId);
   }
   res.redirect('/ziyaretciler');

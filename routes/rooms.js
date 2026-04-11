@@ -3,7 +3,7 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const { db, logActivity, updateRoomStatus, syncRoomKeyStock, recordRoomEntry } = require('../database');
+const { db, logActivity, updateRoomStatus, syncRoomKeyStock, recordRoomEntry, formatLocalTimestamp } = require('../database');
 const MIN_ROOM_KEY_COUNT = 0;
 const { encryptTcNumber, createTcFingerprint, verifyTcNumber } = require('../middleware/tc-encryption');
 
@@ -194,7 +194,7 @@ function syncHandoverIssuesForRoom(roomId, handoverItems, safeUserId, reasonText
 
     if (item.delivered) {
       if (latestOpenIssue && latestOpenIssue.id) {
-        db.prepare("UPDATE room_issues SET status = 'cozuldu', resolved_at = CURRENT_TIMESTAMP WHERE id = ?").run(latestOpenIssue.id);
+        db.prepare("UPDATE room_issues SET status = 'cozuldu', resolved_at = ? WHERE id = ?").run(formatLocalTimestamp(), latestOpenIssue.id);
       }
       syncInventoryConditionWithOpenIssues(roomId, itemName);
       return;
@@ -495,7 +495,7 @@ router.post('/:id/personel-ata', (req, res) => {
     const safeHandoverPayload = handover_payload || JSON.stringify(safeHandoverData);
 
     // 1. Personeli odaya ata ve durumunu güncelle
-    const checkInAt = new Date().toISOString();
+    const checkInAt = formatLocalTimestamp();
     db.prepare('UPDATE personnel SET room_id = ?, status = ?, check_in_date = ?, entry_handover_payload = ?, key_delivered = ?, checkout_key_returned = NULL, checkout_room_id = NULL WHERE id = ?').run(roomId, 'aktif', checkInAt, safeHandoverPayload, keyDeliveredValue, personnel_id);
     recordRoomEntry(personnel_id, roomId, checkInAt);
     logActivity('personel_atama', `Oda ${room.room_number}, ${person.first_name} ${person.last_name} adlı personele atandı.`, null, safeUserId);
@@ -505,7 +505,7 @@ router.post('/:id/personel-ata', (req, res) => {
 
     // 3. Zimmet formunu kaydet
     if (safeHandoverData.form_signed) {
-      db.prepare('INSERT INTO handover_forms (personnel_id, room_id, form_type, is_signed, signed_at) VALUES (?, ?, ?, ?, ?)').run(personnel_id, roomId, 'giris', 1, new Date().toISOString());
+      db.prepare('INSERT INTO handover_forms (personnel_id, room_id, form_type, is_signed, signed_at) VALUES (?, ?, ?, ?, ?)').run(personnel_id, roomId, 'giris', 1, formatLocalTimestamp());
     }
 
     // 4. Demirbaşları kaydet
@@ -517,7 +517,7 @@ router.post('/:id/personel-ata', (req, res) => {
         item.name,
         item.delivered ? 'sağlam' : (item.tag || 'teslim edilmedi'),
         item.delivered ? null : item.description,
-        new Date().toISOString()
+        formatLocalTimestamp()
       );
     });
     syncHandoverIssuesForRoom(roomId, handoverItems, safeUserId, 'oda tahsisinde sağlam teslim edilmedi.');
@@ -691,9 +691,9 @@ router.post('/:id/demirbas-sorun-coz', (req, res) => {
       const result = db.prepare(`
         UPDATE room_issues
         SET status = 'cozuldu',
-            resolved_at = CURRENT_TIMESTAMP
+            resolved_at = ?
         WHERE id = ?
-      `).run(latestOpenIssue.id);
+      `).run(formatLocalTimestamp(), latestOpenIssue.id);
       changes = result.changes || 0;
     }
 
@@ -723,7 +723,7 @@ router.post('/:id/sorun/:issueId/guncelle', (req, res) => {
   if (!issue) return res.redirect(`/odalar/${req.params.id}`);
 
   const normalizedStatus = normalizeIssueStatus(status);
-  db.prepare("UPDATE room_issues SET status = ?, resolved_at = CASE WHEN ? = 'cozuldu' THEN CURRENT_TIMESTAMP ELSE NULL END WHERE id = ?").run(normalizedStatus, normalizedStatus, req.params.issueId);
+  db.prepare("UPDATE room_issues SET status = ?, resolved_at = CASE WHEN ? = 'cozuldu' THEN ? ELSE NULL END WHERE id = ?").run(normalizedStatus, normalizedStatus, formatLocalTimestamp(), req.params.issueId);
 
   const isInventoryIssue = (issue.issue_type === 'demirbas') || !!issue.inventory_item_name;
   if (isInventoryIssue) {
@@ -913,7 +913,7 @@ router.post('/:id/personel-ekle', upload.single('photo'), async (req, res) => {
     const keyDeliveredValue = key_delivered === '1' ? 1 : 0;
     const encryptedTc = await encryptTcNumber(normalizedTc);
     db.prepare('UPDATE personnel SET first_name = ?, last_name = ?, gender = ?, phone = ?, department = ?, room_id = ?, status = ?, check_in_date = ?, photo_path = ?, form_signed = ?, tc_number_encrypted = ?, tc_number_fingerprint = ?, tc_last_four = ? WHERE id = ?').run(
-      first_name, last_name, gender, phone || null, department || null, req.params.id, 'aktif', new Date().toISOString(), photoPath || existingPerson.photo_path, isFormSigned, encryptedTc, tcFingerprint, normalizedTc.slice(-4), existingPerson.id
+      first_name, last_name, gender, phone || null, department || null, req.params.id, 'aktif', formatLocalTimestamp(), photoPath || existingPerson.photo_path, isFormSigned, encryptedTc, tcFingerprint, normalizedTc.slice(-4), existingPerson.id
     );
     db.prepare('UPDATE personnel SET key_delivered = ?, checkout_key_returned = NULL WHERE id = ?').run(keyDeliveredValue, existingPerson.id);
     db.prepare('UPDATE personnel SET checkout_room_id = NULL WHERE id = ?').run(existingPerson.id);
@@ -937,7 +937,7 @@ router.post('/:id/personel-ekle', upload.single('photo'), async (req, res) => {
     const keyDeliveredValue = key_delivered === '1' ? 1 : 0;
     const encryptedTc = await encryptTcNumber(normalizedTc);
     const result = db.prepare('INSERT INTO personnel (first_name, last_name, gender, phone, department, room_id, status, tc_number_encrypted, tc_number_fingerprint, tc_last_four, photo_path, form_signed, entry_handover_payload, key_delivered, check_in_date, added_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
-      first_name, last_name, gender, phone || null, department || null, req.params.id, 'aktif', encryptedTc, tcFingerprint, normalizedTc.slice(-4), photoPath, isFormSigned, handover_payload || null, keyDeliveredValue, new Date().toISOString(), safeUserId
+      first_name, last_name, gender, phone || null, department || null, req.params.id, 'aktif', encryptedTc, tcFingerprint, normalizedTc.slice(-4), photoPath, isFormSigned, handover_payload || null, keyDeliveredValue, formatLocalTimestamp(), safeUserId
     );
   }
 

@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { db, logActivity } = require('../database');
+const { db, logActivity, formatLocalTimestamp } = require('../database');
 
 function getSafeUserId(req) {
   const rawUserId = req.session && req.session.user ? req.session.user.id : null;
@@ -65,7 +65,7 @@ router.get('/', (req, res) => {
 router.post('/ekle', (req, res) => {
   const { item_name, given_to, room_number, notes } = req.body;
   const safeUserId = getSafeUserId(req);
-  const givenAt = new Date().toISOString();
+  const givenAt = formatLocalTimestamp();
   db.prepare('INSERT INTO shared_equipment (item_name, given_to, room_number, notes, status, given_at, returned_at, recorded_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
     item_name,
     given_to,
@@ -96,7 +96,7 @@ router.post('/:id/durum', (req, res) => {
     return res.redirect('/esya-takip');
   }
 
-  const returnedAt = (status === 'iade_edildi' || status === 'kayip') ? new Date().toISOString() : null;
+  const returnedAt = (status === 'iade_edildi' || status === 'kayip') ? formatLocalTimestamp() : null;
   db.prepare('UPDATE shared_equipment SET status = ?, returned_at = ? WHERE id = ?').run(status, returnedAt, req.params.id);
 
   if (status === 'iade_edildi') {
@@ -131,7 +131,7 @@ router.post('/:id/iade', (req, res) => {
   const safeUserId = getSafeUserId(req);
   const item = db.prepare('SELECT * FROM shared_equipment WHERE id = ?').get(req.params.id);
   if (item) {
-    db.prepare("UPDATE shared_equipment SET status = 'iade_edildi', returned_at = CURRENT_TIMESTAMP WHERE id = ?").run(req.params.id);
+    db.prepare("UPDATE shared_equipment SET status = 'iade_edildi', returned_at = ? WHERE id = ?").run(formatLocalTimestamp(), req.params.id);
     logActivity('esya_iade', `${item.item_name} - ${item.given_to} tarafından iade edildi`, null, safeUserId);
   }
   res.redirect('/esya-takip');
@@ -142,7 +142,7 @@ router.post('/:id/kayip', (req, res) => {
   const safeUserId = getSafeUserId(req);
   const item = db.prepare('SELECT * FROM shared_equipment WHERE id = ?').get(req.params.id);
   if (item) {
-    db.prepare("UPDATE shared_equipment SET status = 'kayip', returned_at = CURRENT_TIMESTAMP WHERE id = ?").run(req.params.id);
+    db.prepare("UPDATE shared_equipment SET status = 'kayip', returned_at = ? WHERE id = ?").run(formatLocalTimestamp(), req.params.id);
     logActivity('esya_kayip', `${item.item_name} - ${item.given_to} kişisinde kayıp bildirildi`, null, safeUserId);
   }
   res.redirect('/esya-takip');

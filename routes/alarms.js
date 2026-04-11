@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { db, logActivity } = require('../database');
+const { db, logActivity, formatLocalTimestamp } = require('../database');
 
 function getSafeUserId(req) {
   const rawUserId = req && req.session && req.session.user ? req.session.user.id : null;
@@ -29,8 +29,8 @@ router.get('/', (req, res) => {
 router.post('/ekle', (req, res) => {
   const { location, is_real, description, action_taken } = req.body;
   const safeUserId = getSafeUserId(req);
-  db.prepare('INSERT INTO fire_alarms (location, is_real, description, action_taken, recorded_by) VALUES (?, ?, ?, ?, ?)').run(
-    location, is_real === 'true' ? 1 : 0, description || null, action_taken || null, safeUserId
+  db.prepare('INSERT INTO fire_alarms (location, is_real, description, action_taken, recorded_by, alarm_time) VALUES (?, ?, ?, ?, ?, ?)').run(
+    location, is_real === 'true' ? 1 : 0, description || null, action_taken || null, safeUserId, formatLocalTimestamp()
   );
   const alarmType = is_real === 'true' ? 'GERÇEK' : 'YANLIŞ';
   logActivity('yangin_alarm', `Yangın alarmı: ${location} - ${alarmType} ALARM`, description || null, safeUserId);

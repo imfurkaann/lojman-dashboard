@@ -7,6 +7,16 @@ const dbPath = process.env.DB_PATH
   : path.join(__dirname, 'lojman.db');
 const db = new Database(dbPath);
 
+function formatLocalTimestamp(date = new Date()) {
+  const year = String(date.getFullYear());
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const seconds = String(date.getSeconds()).padStart(2, '0');
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+}
+
 // WAL mode for better performance
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
@@ -738,7 +748,7 @@ function logActivity(actionType, description, details, userId) {
   const rawUserId = userId || null;
   const actorUser = rawUserId ? db.prepare('SELECT id FROM users WHERE id = ?').get(rawUserId) : null;
   const safeUserId = actorUser ? actorUser.id : null;
-  db.prepare('INSERT INTO activity_log (action_type, description, details, performed_by) VALUES (?, ?, ?, ?)').run(actionType, description, details || null, safeUserId);
+  db.prepare('INSERT INTO activity_log (action_type, description, details, performed_by, created_at) VALUES (?, ?, ?, ?, ?)').run(actionType, description, details || null, safeUserId, formatLocalTimestamp());
 }
 
 // Oda durumunu güncelleme yardımcı fonksiyonu
@@ -802,7 +812,7 @@ function recordRoomEntry(personnelId, roomId, entryAt) {
   }
 
   const snapshot = getPersonnelHistorySnapshot(personId);
-  const timestamp = entryAt || new Date().toISOString();
+  const timestamp = entryAt || formatLocalTimestamp();
 
   db.prepare(`
     INSERT INTO room_stay_history (
@@ -833,7 +843,7 @@ function recordRoomExit(personnelId, roomId, exitAt) {
   const targetRoomId = Number(roomId);
   if (!personId || !targetRoomId) return;
 
-  const timestamp = exitAt || new Date().toISOString();
+  const timestamp = exitAt || formatLocalTimestamp();
   const openRow = db.prepare(`
     SELECT id
     FROM room_stay_history
@@ -879,5 +889,6 @@ module.exports = {
   updateRoomStatus,
   syncRoomKeyStock,
   recordRoomEntry,
-  recordRoomExit
+  recordRoomExit,
+  formatLocalTimestamp
 };
