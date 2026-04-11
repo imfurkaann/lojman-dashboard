@@ -146,7 +146,7 @@ const roomAvailability = room.availability_status || 'musait';
     <form method="POST" action="/odalar/<%= room.id %>/musaitlik-guncelle" class="room-availability-form">
       <label class="small text-muted mb-0">Müsaitlik</label>
       <select class="form-select form-select-sm" name="availability_status" onchange="this.form.submit()">
-        <option value="musait" <%= roomAvailability === 'musait' ? 'selected' : '' %>>Oda Müsait</option>
+        <option value="musait" <%= roomAvailability === 'musait' ? 'selected' : '' %>>Temiz</option>
         <option value="temizlenmeli" <%= roomAvailability === 'temizlenmeli' ? 'selected' : '' %>>Temizlenmesi Gerekiyor</option>
         <option value="kullanilamaz" <%= roomAvailability === 'kullanilamaz' ? 'selected' : '' %>>Oda Kullanılamaz</option>
       </select>

@@ -1,6 +1,53 @@
 const express = require('express');
 const router = express.Router();
+const ExcelJS = require('exceljs');
 const { db, logActivity, formatLocalTimestamp } = require('../database');
+
+function isValidDateInput(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
+}
+
+function buildVisitorsFilters(query) {
+  const search = String(query.search || '').trim();
+  const dateFilter = isValidDateInput(query.date) ? String(query.date) : '';
+  const dateFrom = isValidDateInput(query.date_from) ? String(query.date_from) : '';
+  const dateTo = isValidDateInput(query.date_to) ? String(query.date_to) : '';
+
+  return {
+    search,
+    dateFilter,
+    dateFrom,
+    dateTo
+  };
+}
+
+function getVisitorsByFilters(filters) {
+  const { search, dateFilter, dateFrom, dateTo } = filters;
+  let query = 'SELECT v.*, u.full_name as recorder_name FROM visitors v LEFT JOIN users u ON v.recorded_by = u.id WHERE 1=1';
+  const params = [];
+
+  if (search) {
+    query += ' AND (v.visitor_name LIKE ? OR v.purpose LIKE ? OR v.company LIKE ?)';
+    params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+  }
+
+  if (dateFilter) {
+    query += " AND date(v.visit_date, 'localtime') = ?";
+    params.push(dateFilter);
+  } else {
+    if (dateFrom) {
+      query += " AND date(v.visit_date, 'localtime') >= ?";
+      params.push(dateFrom);
+    }
+    if (dateTo) {
+      query += " AND date(v.visit_date, 'localtime') <= ?";
+      params.push(dateTo);
+    }
+  }
+
+  query += ' ORDER BY v.visit_date DESC';
+  return db.prepare(query).all(...params);
+}
 
 function getSafeUserId(req) {
   const rawUserId = req.session && req.session.user ? req.session.user.id : null;
@@ -10,24 +57,62 @@ function getSafeUserId(req) {
 
 // Ziyaretçi listesi
 router.get('/', (req, res) => {
-  const search = req.query.search || '';
-  const dateFilter = req.query.date || '';
+  const filters = buildVisitorsFilters(req.query || {});
+  const visitors = getVisitorsByFilters(filters);
+  res.render('visitors', {
+    title: 'Ziyaretçiler',
+    visitors,
+    search: filters.search,
+    dateFilter: filters.dateFilter,
+    dateFrom: filters.dateFrom,
+    dateTo: filters.dateTo
+  });
+});
 
-  let query = 'SELECT v.*, u.full_name as recorder_name FROM visitors v LEFT JOIN users u ON v.recorded_by = u.id WHERE 1=1';
-  const params = [];
+router.get('/excel', async (req, res, next) => {
+  try {
+    const filters = buildVisitorsFilters(req.query || {});
+    const visitors = getVisitorsByFilters(filters);
 
-  if (search) {
-    query += ' AND (v.visitor_name LIKE ? OR v.purpose LIKE ? OR v.company LIKE ?)';
-    params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Ziyaretçiler');
+
+    sheet.columns = [
+      { header: 'Ziyaretçi', key: 'visitor_name', width: 28 },
+      { header: 'Amaç', key: 'purpose', width: 28 },
+      { header: 'Firma', key: 'company', width: 24 },
+      { header: 'Telefon', key: 'phone', width: 18 },
+      { header: 'Giriş Saati', key: 'visit_date', width: 24 },
+      { header: 'Çıkış Saati', key: 'departure_time', width: 24 },
+      { header: 'Not', key: 'notes', width: 36 },
+      { header: 'Durum', key: 'status', width: 14 }
+    ];
+
+    sheet.getRow(1).font = { bold: true };
+
+    visitors.forEach(v => {
+      sheet.addRow({
+        visitor_name: v.visitor_name || '-',
+        purpose: v.purpose || '-',
+        company: v.company || '-',
+        phone: v.phone || '-',
+        visit_date: v.visit_date || '-',
+        departure_time: v.departure_time || '-',
+        notes: v.notes || '-',
+        status: v.deleted_at ? 'Soft Silindi' : (v.departure_time ? 'Çıkış Yaptı' : 'İçeride')
+      });
+    });
+
+    const now = new Date();
+    const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="ziyaretciler-${stamp}.xlsx"`);
+
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    next(error);
   }
-  if (dateFilter) {
-    query += " AND date(v.visit_date, 'localtime') = ?";
-    params.push(dateFilter);
-  }
-  query += ' ORDER BY v.visit_date DESC';
-
-  const visitors = db.prepare(query).all(...params);
-  res.render('visitors', { title: 'Ziyaretçiler', visitors, search, dateFilter });
 });
 
 // Ziyaretçi ekle

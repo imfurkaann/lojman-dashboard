@@ -321,7 +321,7 @@
       <div class="col-md-2">
         <select class="form-select form-select-sm" name="availability" onchange="this.form.submit()">
           <option value="">Temizlik Durumu</option>
-          <option value="musait" <%= availabilityFilter === 'musait' ? 'selected' : '' %>>Müsait</option>
+          <option value="musait" <%= availabilityFilter === 'musait' ? 'selected' : '' %>>Temiz</option>
           <option value="temizlenmeli" <%= availabilityFilter === 'temizlenmeli' ? 'selected' : '' %>>Temizlenmesi Gerekiyor</option>
           <option value="kullanilamaz" <%= availabilityFilter === 'kullanilamaz' ? 'selected' : '' %>>Kullanılamaz</option>
         </select>
@@ -404,7 +404,7 @@
                   <% } else if (availability === 'temizlenmeli') { %>
                     <span class="badge bg-warning text-dark">Temizlenmesi Gerekiyor</span>
                   <% } else { %>
-                    <span class="badge bg-success">Müsait</span>
+                    <span class="badge bg-success">Temiz</span>
                   <% } %>
                 </div>
               </div>

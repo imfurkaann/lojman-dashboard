@@ -2,9 +2,14 @@
 
 <div class="d-flex justify-content-between align-items-center mb-4">
   <h4 class="mb-0"><i class="bi bi-person-badge"></i> Ziyaretçi Kayıtları</h4>
-  <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addVisitorModal">
-    <i class="bi bi-plus-lg"></i> Ziyaretçi Ekle
-  </button>
+  <div class="d-flex gap-2">
+    <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#exportVisitorsModal">
+      <i class="bi bi-file-earmark-excel"></i> Excel İndir
+    </button>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addVisitorModal">
+      <i class="bi bi-plus-lg"></i> Ziyaretçi Ekle
+    </button>
+  </div>
 </div>
 
 <style>
@@ -24,9 +29,15 @@
         <input type="date" class="form-control form-control-sm" name="date" value="<%= dateFilter %>" onchange="this.form.submit()">
       </div>
       <div class="col-md-2">
+        <input type="date" class="form-control form-control-sm" name="date_from" value="<%= dateFrom || '' %>" title="Başlangıç tarihi">
+      </div>
+      <div class="col-md-2">
+        <input type="date" class="form-control form-control-sm" name="date_to" value="<%= dateTo || '' %>" title="Bitiş tarihi">
+      </div>
+      <div class="col-md-2">
         <button type="submit" class="btn btn-sm btn-primary w-100">Filtrele</button>
       </div>
-      <% if (search || dateFilter) { %>
+      <% if (search || dateFilter || dateFrom || dateTo) { %>
       <div class="col-md-2">
         <a href="/ziyaretciler" class="btn btn-sm btn-outline-secondary w-100">Temizle</a>
       </div>
@@ -98,6 +109,39 @@
       </table>
     </div>
     <% } %>
+  </div>
+</div>
+
+<!-- Excel İndir Modal -->
+<div class="modal fade" id="exportVisitorsModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="GET" action="/ziyaretciler/excel" id="exportVisitorsForm">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-file-earmark-excel"></i> Excel İndir</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="alert alert-light border py-2 small mb-3">
+            Otel rezervasyonlarındaki gibi tarih seçimi yapabilirsiniz.
+            Tek tarih seçerseniz sadece o gün, aralık seçerseniz seçilen aralık indirilir.
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Tarih / Tarih Aralığı</label>
+            <input type="text" class="form-control" id="exportDateRange" placeholder="Başlangıç - Bitiş seçin" autocomplete="off">
+          </div>
+
+          <input type="hidden" name="date" id="exportDateSingle" value="">
+          <input type="hidden" name="date_from" id="exportDateFrom" value="">
+          <input type="hidden" name="date_to" id="exportDateTo" value="">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Kapat</button>
+          <button type="submit" class="btn btn-success"><i class="bi bi-download"></i> İndir</button>
+        </div>
+      </form>
+    </div>
   </div>
 </div>
 
@@ -183,6 +227,10 @@
   </div>
 </div>
 
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/tr.js"></script>
+
 <%- include('footer') %>
 
 <script>
@@ -197,6 +245,72 @@ if (visitorsFilterForm && visitorsSearchInput) {
     searchDebounceTimer = setTimeout(() => {
       visitorsFilterForm.submit();
     }, 250);
+  });
+}
+
+const exportVisitorsForm = document.getElementById('exportVisitorsForm');
+const exportDateRangeInput = document.getElementById('exportDateRange');
+const exportDateSingleInput = document.getElementById('exportDateSingle');
+const exportDateFromInput = document.getElementById('exportDateFrom');
+const exportDateToInput = document.getElementById('exportDateTo');
+
+let exportDatePicker = null;
+
+if (exportDateRangeInput && typeof flatpickr !== 'undefined') {
+  const defaultDates = [];
+  const initialSingleDate = '<%= dateFilter || '' %>';
+  const initialFromDate = '<%= dateFrom || '' %>';
+  const initialToDate = '<%= dateTo || '' %>';
+
+  if (initialSingleDate) {
+    defaultDates.push(initialSingleDate);
+  } else {
+    if (initialFromDate) defaultDates.push(initialFromDate);
+    if (initialToDate) defaultDates.push(initialToDate);
+  }
+
+  exportDatePicker = flatpickr(exportDateRangeInput, {
+    mode: 'range',
+    dateFormat: 'Y-m-d',
+    locale: (flatpickr && flatpickr.l10ns && flatpickr.l10ns.tr) ? flatpickr.l10ns.tr : 'tr',
+    defaultDate: defaultDates
+  });
+}
+
+if (exportVisitorsForm) {
+  exportVisitorsForm.addEventListener('submit', (event) => {
+    if (!exportDateSingleInput || !exportDateFromInput || !exportDateToInput) return;
+
+    exportDateSingleInput.value = '';
+    exportDateFromInput.value = '';
+    exportDateToInput.value = '';
+
+    const selectedDates = exportDatePicker && Array.isArray(exportDatePicker.selectedDates)
+      ? exportDatePicker.selectedDates
+      : [];
+
+    if (!selectedDates.length) {
+      event.preventDefault();
+      alert('Lütfen en az bir tarih seçin.');
+      return;
+    }
+
+    const from = selectedDates[0] ? flatpickr.formatDate(selectedDates[0], 'Y-m-d') : '';
+    const to = selectedDates[1] ? flatpickr.formatDate(selectedDates[1], 'Y-m-d') : '';
+
+    if (from && !to) {
+      exportDateSingleInput.value = from;
+      return;
+    }
+
+    if (from && to) {
+      exportDateFromInput.value = from;
+      exportDateToInput.value = to;
+      return;
+    }
+
+    event.preventDefault();
+    alert('Geçerli bir tarih seçimi yapın.');
   });
 }
 </script>

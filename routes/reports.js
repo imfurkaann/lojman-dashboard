@@ -125,7 +125,15 @@ function buildRoomIssuesReportData() {
     diger: 'Diğer'
   };
 
-  const excludedInventoryKeys = new Set(['oda anahtarı']);
+  const excludedInventoryKeys = new Set([
+    'oda anahtarı',
+    'klima kumandası',
+    'tv kumandası',
+    'yastık',
+    'yastik',
+    'nevresim takımı',
+    'nevreim takımı'
+  ]);
   const inventoryColumnLookup = new Map();
 
   inventoryStates.forEach(state => {

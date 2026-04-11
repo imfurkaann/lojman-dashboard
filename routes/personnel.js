@@ -329,6 +329,9 @@ router.get('/', (req, res) => {
   const checkInTo = req.query.check_in_to || '';
   const checkOutFrom = req.query.check_out_from || '';
   const checkOutTo = req.query.check_out_to || '';
+  const formSignedFilter = req.query.form_signed || '';
+  const keyDeliveredFilter = req.query.key_delivered || '';
+  const photoMissingFilter = req.query.photo_missing || '';
   const errorMessage = req.query.error || '';
   
   let query = `SELECT p.*, r.room_number FROM personnel p 
@@ -370,6 +373,21 @@ router.get('/', (req, res) => {
   if (checkOutTo) {
     query += " AND p.check_out_date IS NOT NULL AND DATE(p.check_out_date, 'localtime') <= DATE(?)";
     params.push(checkOutTo);
+  }
+  if (formSignedFilter === '0') {
+    query += ' AND COALESCE(p.form_signed, 0) = 0';
+  } else if (formSignedFilter === '1') {
+    query += ' AND COALESCE(p.form_signed, 0) = 1';
+  }
+  if (keyDeliveredFilter === '0') {
+    query += ' AND COALESCE(p.key_delivered, 0) = 0';
+  } else if (keyDeliveredFilter === '1') {
+    query += ' AND COALESCE(p.key_delivered, 0) = 1';
+  }
+  if (photoMissingFilter === '1') {
+    query += " AND (p.photo_path IS NULL OR TRIM(p.photo_path) = '')";
+  } else if (photoMissingFilter === '0') {
+    query += " AND (p.photo_path IS NOT NULL AND TRIM(p.photo_path) != '')";
   }
   query += ' ORDER BY p.first_name, p.last_name';
 
@@ -453,6 +471,9 @@ router.get('/', (req, res) => {
     checkInTo,
     checkOutFrom,
     checkOutTo,
+    formSignedFilter,
+    keyDeliveredFilter,
+    photoMissingFilter,
     errorMessage
   });
 });

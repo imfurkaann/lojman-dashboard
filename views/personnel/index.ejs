@@ -45,7 +45,7 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
         display: grid;
         gap: 0.5rem;
         align-items: end;
-        grid-template-columns: minmax(180px, 2.4fr) minmax(130px, 1.3fr) minmax(130px, 1.3fr) minmax(150px, 1.5fr) minmax(150px, 1.5fr) minmax(150px, 1.5fr) auto;
+        grid-template-columns: repeat(12, minmax(0, 1fr));
       }
 
       .personnel-filter-item {
@@ -53,20 +53,21 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
       }
 
       .personnel-filter-search {
-        grid-column: 1;
+        grid-column: span 3;
       }
 
       .personnel-filter-department,
-      .personnel-filter-status {
-        grid-column: auto;
+      .personnel-filter-status,
+      .personnel-filter-flag {
+        grid-column: span 2;
       }
 
       .personnel-filter-date {
-        grid-column: auto;
+        grid-column: span 2;
       }
 
       .personnel-filter-actions {
-        grid-column: auto;
+        grid-column: span 1;
         display: flex;
         justify-content: flex-end;
         gap: 0.5rem;
@@ -87,6 +88,7 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
 
         .personnel-filter-department,
         .personnel-filter-status,
+        .personnel-filter-flag,
         .personnel-filter-date {
           grid-column: span 3;
         }
@@ -98,12 +100,17 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
       }
 
       @media (max-width: 767.98px) {
+        .personnel-filters-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
         .personnel-filter-search,
         .personnel-filter-department,
         .personnel-filter-status,
+        .personnel-filter-flag,
         .personnel-filter-date,
         .personnel-filter-actions {
-          grid-column: span 12;
+          grid-column: span 2;
         }
 
         .personnel-filter-actions {
@@ -121,7 +128,7 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
         <input type="text" class="form-control form-control-sm" id="personnelSearchInput" name="search" placeholder="İsim veya telefon ara..." value="<%= search %>">
       </div>
       <div class="personnel-filter-item personnel-filter-department">
-        <select class="form-select form-select-sm" name="department" onchange="this.form.submit()">
+        <select class="form-select form-select-sm js-filter-dropdown" name="department">
           <option value="">Tüm Departmanlar</option>
           <% departmentOptions.forEach(dep => { %>
             <option value="<%= dep %>" <%= department === dep ? 'selected' : '' %>><%= dep %></option>
@@ -129,11 +136,32 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
         </select>
       </div>
       <div class="personnel-filter-item personnel-filter-status">
-        <select class="form-select form-select-sm" name="status" onchange="this.form.submit()">
+        <select class="form-select form-select-sm js-filter-dropdown" name="status">
           <option value="" <%= statusFilter === '' ? 'selected' : '' %>>Tümü</option>
           <option value="aktif" <%= statusFilter === 'aktif' ? 'selected' : '' %>>Aktif</option>
           <option value="cikis_yapti" <%= statusFilter === 'cikis_yapti' ? 'selected' : '' %>>Çıkış Yapmış</option>
           <option value="bosta" <%= statusFilter === 'bosta' ? 'selected' : '' %>>Boşta</option>
+        </select>
+      </div>
+      <div class="personnel-filter-item personnel-filter-flag">
+        <select class="form-select form-select-sm js-filter-dropdown" name="form_signed">
+          <option value="" <%= (formSignedFilter || '') === '' ? 'selected' : '' %>>Zimmet Formu: Tümü</option>
+          <option value="1" <%= formSignedFilter === '1' ? 'selected' : '' %>>İmzalayanlar</option>
+          <option value="0" <%= formSignedFilter === '0' ? 'selected' : '' %>>İmzalamayanlar</option>
+        </select>
+      </div>
+      <div class="personnel-filter-item personnel-filter-flag">
+        <select class="form-select form-select-sm js-filter-dropdown" name="key_delivered">
+          <option value="" <%= (keyDeliveredFilter || '') === '' ? 'selected' : '' %>>Anahtar Teslimi: Tümü</option>
+          <option value="1" <%= keyDeliveredFilter === '1' ? 'selected' : '' %>>Teslim Edilenler</option>
+          <option value="0" <%= keyDeliveredFilter === '0' ? 'selected' : '' %>>Teslim Edilmeyenler</option>
+        </select>
+      </div>
+      <div class="personnel-filter-item personnel-filter-flag">
+        <select class="form-select form-select-sm js-filter-dropdown" name="photo_missing">
+          <option value="" <%= (photoMissingFilter || '') === '' ? 'selected' : '' %>>Fotoğraf: Tümü</option>
+          <option value="0" <%= photoMissingFilter === '0' ? 'selected' : '' %>>Fotoğrafı Olanlar</option>
+          <option value="1" <%= photoMissingFilter === '1' ? 'selected' : '' %>>Fotoğrafı Olmayanlar</option>
         </select>
       </div>
       <div class="personnel-filter-item personnel-filter-date">
@@ -491,6 +519,7 @@ const capturedPhotoFlag = document.getElementById('capturedPhotoFlag');
 const capturedPhotoData = document.getElementById('capturedPhotoData');
 const personnelFilterForm = document.getElementById('personnelFilterForm');
 const personnelSearchInput = document.getElementById('personnelSearchInput');
+const personnelFilterDropdowns = document.querySelectorAll('#personnelFilterForm .js-filter-dropdown');
 const createdAtRange = document.getElementById('createdAtRange');
 const checkInRange = document.getElementById('checkInRange');
 const checkOutRange = document.getElementById('checkOutRange');
@@ -543,6 +572,14 @@ if (personnelFilterForm && personnelSearchInput) {
       event.preventDefault();
       personnelFilterForm.submit();
     }
+  });
+}
+
+if (personnelFilterForm && personnelFilterDropdowns.length > 0) {
+  personnelFilterDropdowns.forEach(dropdown => {
+    dropdown.addEventListener('change', () => {
+      personnelFilterForm.submit();
+    });
   });
 }
 
