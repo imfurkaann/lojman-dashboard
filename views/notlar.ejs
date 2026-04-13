@@ -1,0 +1,469 @@
+<%- include('layout', { title: 'Notlar' }) %>
+
+<style>
+  .notes-page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .notes-page-title {
+    margin: 0;
+    font-size: 1.55rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: #111827;
+  }
+
+  .notes-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1rem;
+  }
+
+  .notes-section-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    margin-bottom: 0.75rem;
+  }
+
+  .notes-section-wrap {
+    margin-bottom: 1.25rem;
+  }
+
+  .notes-section-top {
+    padding: 0.7rem 0.85rem;
+    border-radius: 12px;
+    border: 1px solid rgba(245, 158, 11, 0.35);
+    background: linear-gradient(180deg, rgba(255, 244, 224, 0.8) 0%, rgba(255, 255, 255, 0.9) 100%);
+  }
+
+  .note-card {
+    position: relative;
+    overflow: hidden;
+    border: 0;
+    border-radius: 18px;
+    box-shadow: 0 0.6rem 1.5rem rgba(15, 23, 42, 0.08);
+    background: var(--note-surface, #fff);
+    border-left: 6px solid var(--note-accent, #0d6efd);
+    height: 250px;
+    cursor: pointer;
+  }
+
+  .note-card::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    height: 0.32rem;
+    background: linear-gradient(90deg, var(--note-accent, #0d6efd), rgba(255, 255, 255, 0));
+  }
+
+  .note-card.note-tag-normal {
+    --note-accent: #0d6efd;
+    --note-surface: linear-gradient(180deg, #f8fbff 0%, #ffffff 58%);
+  }
+
+  .note-card.note-tag-important {
+    --note-accent: #f59f00;
+    --note-surface: linear-gradient(180deg, #fff9eb 0%, #ffffff 58%);
+  }
+
+  .note-card.note-tag-urgent {
+    --note-accent: #dc3545;
+    --note-surface: linear-gradient(180deg, #fff3f5 0%, #ffffff 58%);
+  }
+
+  .note-card.note-state-due-today {
+    box-shadow: 0 0.8rem 1.8rem rgba(245, 159, 0, 0.18);
+  }
+
+  .note-card.note-state-overdue {
+    box-shadow: 0 0.8rem 1.8rem rgba(220, 53, 69, 0.2);
+  }
+
+  .note-card.note-card-pinned {
+    transform: translateY(-2px);
+  }
+
+  .note-card-topline {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 0.5rem;
+    margin-bottom: 0.9rem;
+  }
+
+  .note-badge-stack {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.45rem;
+  }
+
+  .note-badge-stack .badge {
+    white-space: nowrap;
+    flex: 0 0 auto;
+  }
+
+  .note-created-at {
+    font-size: 0.76rem;
+    color: #64748b;
+    text-align: right;
+    white-space: nowrap;
+    padding-right: 0.25rem;
+  }
+
+  .note-title {
+    font-size: 1.05rem;
+    line-height: 1.25;
+    font-weight: 800;
+    margin-bottom: 0.75rem;
+  }
+
+  .note-content {
+    color: #334155;
+    white-space: pre-wrap;
+    word-break: break-word;
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .note-footer {
+    margin-top: auto;
+    padding-top: 0.9rem;
+    border-top: 1px solid rgba(15, 23, 42, 0.08);
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 0.75rem;
+  }
+
+  .note-footer-meta {
+    font-size: 0.84rem;
+    color: #64748b;
+  }
+
+  .note-footer-actions {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .note-pin-indicator {
+    position: absolute;
+    top: 0.85rem;
+    left: 0.85rem;
+    z-index: 1;
+  }
+
+  .note-empty-state {
+    border: 1px dashed rgba(148, 163, 184, 0.4);
+    border-radius: 18px;
+    background: rgba(248, 250, 252, 0.75);
+  }
+
+  .notes-add-btn {
+    white-space: nowrap;
+    padding: 0.4rem 0.8rem;
+    font-size: 1rem;
+  }
+
+  @media (max-width: 1199.98px) {
+    .notes-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 767.98px) {
+    .notes-page-header {
+      justify-content: flex-end;
+    }
+
+    .notes-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .note-footer {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .note-footer-actions {
+      justify-content: flex-start;
+    }
+  }
+</style>
+
+<div class="notes-page-header">
+  <h1 class="notes-page-title">Notlar</h1>
+  <button type="button" id="addNoteButton" class="btn btn-primary notes-add-btn">
+    <i class="bi bi-plus-lg"></i> Not Ekle
+  </button>
+</div>
+
+<%
+  const dueTodayNotes = notes.filter((note) => note.due_state === 'due_today');
+  const regularNotes = notes.filter((note) => note.due_state !== 'due_today');
+%>
+
+<% if (dueTodayNotes.length > 0) { %>
+  <div class="notes-section-wrap notes-section-top">
+    <div class="notes-section-title">
+      <i class="bi bi-calendar2-check"></i> Günü Gelen Notlar
+    </div>
+    <div class="notes-grid">
+      <% dueTodayNotes.forEach((note) => { %>
+        <div
+          class="card note-card note-clickable <%= note.tag_card_class %> <%= note.due_card_class %> <%= note.is_pinned ? 'shadow-lg' : '' %>"
+          data-note-id="<%= note.id %>"
+          data-note-content="<%= note.content %>"
+          data-note-tag="<%= note.tag %>"
+          data-note-due-date="<%= note.due_date || '' %>"
+        >
+          <div class="card-body d-flex flex-column p-3 p-lg-3">
+            <div class="note-card-topline">
+              <div class="note-badge-stack pe-2">
+                <span class="badge rounded-pill <%= note.tag_badge_class %>">
+                  <i class="bi <%= note.tag_icon %>"></i> <%= note.tag_label %>
+                </span>
+                <% if (note.show_due_marker) { %>
+                  <span class="badge rounded-pill <%= note.due_marker_badge_class %>">
+                    <i class="bi <%= note.due_marker_icon %>"></i> <%= note.due_marker_label %>
+                  </span>
+                <% } %>
+              </div>
+              <div class="note-created-at">
+                <div><strong>Oluşturulma Tarihi:</strong> <%= note.created_at_label %></div>
+              </div>
+            </div>
+
+            <div class="note-content"><%= note.content %></div>
+
+            <div class="note-footer">
+              <div class="note-footer-meta">
+                <div><strong>Bitiş Tarihi:</strong> <%= note.due_date_label %></div>
+              </div>
+              <div class="note-footer-actions">
+                <form method="POST" action="/notlar/<%= note.id %>/sabitle">
+                  <button type="submit" class="btn btn-sm <%= note.is_pinned ? 'btn-dark text-white' : 'btn-outline-dark' %>">
+                    <i class="bi <%= note.is_pinned ? 'bi-pin-angle-fill' : 'bi-pin-angle' %>"></i>
+                  </button>
+                </form>
+                <form method="POST" action="/notlar/<%= note.id %>/sil" onsubmit="return confirm('Bu not silinsin mi?')">
+                  <button type="submit" class="btn btn-outline-danger btn-sm">
+                    <i class="bi bi-trash"></i>
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      <% }) %>
+    </div>
+  </div>
+<% } %>
+
+<% if (regularNotes.length === 0) { %>
+  <div class="note-empty-state text-center py-5 text-muted">
+    <i class="bi bi-journal-text fs-1 d-block mb-2"></i>
+    Diğer not yok. Sağ üstten yeni not ekleyebilirsin.
+  </div>
+<% } else { %>
+  <div class="notes-section-wrap">
+    <div class="notes-section-title">Diğer Notlar</div>
+    <div class="notes-grid">
+    <% regularNotes.forEach((note) => { %>
+      <div
+        class="card note-card note-clickable <%= note.tag_card_class %> <%= note.due_card_class %> <%= note.is_pinned ? 'shadow-lg' : '' %>"
+        data-note-id="<%= note.id %>"
+        data-note-content="<%= note.content %>"
+        data-note-tag="<%= note.tag %>"
+        data-note-due-date="<%= note.due_date || '' %>"
+      >
+        <div class="card-body d-flex flex-column p-3 p-lg-3">
+          <div class="note-card-topline">
+            <div class="note-badge-stack pe-2">
+              <span class="badge rounded-pill <%= note.tag_badge_class %>">
+                <i class="bi <%= note.tag_icon %>"></i> <%= note.tag_label %>
+              </span>
+              <% if (note.show_due_marker) { %>
+                <span class="badge rounded-pill <%= note.due_marker_badge_class %>">
+                  <i class="bi <%= note.due_marker_icon %>"></i> <%= note.due_marker_label %>
+                </span>
+              <% } %>
+            </div>
+            <div class="note-created-at">
+              <div><strong>Oluşturulma Tarihi:</strong> <%= note.created_at_label %></div>
+            </div>
+          </div>
+
+          <div class="note-content"><%= note.content %></div>
+
+          <div class="note-footer">
+            <div class="note-footer-meta">
+              <div><strong>Bitiş Tarihi:</strong> <%= note.due_date_label %></div>
+            </div>
+            <div class="note-footer-actions">
+              <form method="POST" action="/notlar/<%= note.id %>/sabitle">
+                <button type="submit" class="btn btn-sm <%= note.is_pinned ? 'btn-dark text-white' : 'btn-outline-dark' %>">
+                  <i class="bi <%= note.is_pinned ? 'bi-pin-angle-fill' : 'bi-pin-angle' %>"></i>
+                </button>
+              </form>
+              <form method="POST" action="/notlar/<%= note.id %>/sil" onsubmit="return confirm('Bu not silinsin mi?')">
+                <button type="submit" class="btn btn-outline-danger btn-sm">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    <% }) %>
+    </div>
+  </div>
+<% } %>
+
+<div class="modal fade" id="addNoteModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-plus-circle"></i> Not Ekle</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Kapat"></button>
+      </div>
+      <form method="POST" action="/notlar/ekle">
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="form-label">Not</label>
+              <textarea name="content" class="form-control" rows="5" placeholder="Notu buraya yaz..." required></textarea>
+            </div>
+            <div class="col-12 col-lg-4">
+              <label class="form-label">Etiket</label>
+              <select name="tag" class="form-select">
+                <option value="normal">Genel</option>
+                <option value="onemli">Önemli</option>
+                <option value="acil">Acil</option>
+              </select>
+            </div>
+            <div class="col-12 col-lg-4">
+              <label class="form-label">Bitiş Tarihi</label>
+              <input type="date" name="due_date" class="form-control">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Vazgeç</button>
+          <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> Kaydet</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="editNoteModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-pencil-square"></i> Notu Düzenle</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Kapat"></button>
+      </div>
+      <form id="editNoteForm" method="POST">
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="form-label">Not</label>
+              <textarea class="form-control" id="editNoteContent" name="content" rows="5" required></textarea>
+            </div>
+            <div class="col-12 col-lg-4">
+              <label class="form-label">Etiket</label>
+              <select class="form-select" id="editNoteTag" name="tag">
+                <option value="normal">Genel</option>
+                <option value="onemli">Önemli</option>
+                <option value="acil">Acil</option>
+              </select>
+            </div>
+            <div class="col-12 col-lg-4">
+              <label class="form-label">Bitiş Tarihi</label>
+              <input type="date" class="form-control" id="editNoteDueDate" name="due_date">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> Güncelle</button>
+          <form id="editNoteDeleteForm" method="POST" onsubmit="return confirm('Bu not silinsin mi?')">
+            <button type="submit" class="btn btn-outline-danger"><i class="bi bi-trash"></i> Sil</button>
+          </form>
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Vazgeç</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const addButton = document.getElementById('addNoteButton');
+    const addModalElement = document.getElementById('addNoteModal');
+    const editModal = document.getElementById('editNoteModal');
+    const editForm = document.getElementById('editNoteForm');
+    const editDeleteForm = document.getElementById('editNoteDeleteForm');
+    const editContent = document.getElementById('editNoteContent');
+    const editTag = document.getElementById('editNoteTag');
+    const editDueDate = document.getElementById('editNoteDueDate');
+
+    const fillEditForm = (sourceElement) => {
+      if (!sourceElement || !editForm) return;
+      const noteId = sourceElement.getAttribute('data-note-id');
+      const noteContent = sourceElement.getAttribute('data-note-content') || '';
+      const noteTag = sourceElement.getAttribute('data-note-tag') || 'normal';
+      const noteDueDate = sourceElement.getAttribute('data-note-due-date') || '';
+
+      if (!noteId) return;
+
+      editForm.setAttribute('action', `/notlar/${noteId}/guncelle`);
+      if (editDeleteForm) {
+        editDeleteForm.setAttribute('action', `/notlar/${noteId}/sil`);
+      }
+      editContent.value = noteContent;
+      editTag.value = noteTag;
+      editDueDate.value = noteDueDate;
+    };
+
+    if (addButton && addModalElement && window.bootstrap && bootstrap.Modal) {
+      const addModal = bootstrap.Modal.getOrCreateInstance(addModalElement);
+      addButton.addEventListener('click', () => addModal.show());
+    }
+
+    if (!editModal || !editForm) return;
+
+    editModal.addEventListener('show.bs.modal', (event) => {
+      const button = event.relatedTarget;
+      if (!button) return;
+      fillEditForm(button);
+    });
+
+    document.querySelectorAll('.note-clickable').forEach((card) => {
+      card.addEventListener('click', (event) => {
+        const interactiveTarget = event.target.closest('button, form, a, input, select, textarea, label');
+        if (interactiveTarget) {
+          return;
+        }
+
+        fillEditForm(card);
+        if (window.bootstrap && bootstrap.Modal) {
+          bootstrap.Modal.getOrCreateInstance(editModal).show();
+        }
+      });
+    });
+  });
+</script>
+
+<%- include('footer') %>

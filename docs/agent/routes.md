@@ -1,7 +1,9 @@
 # Route Catalog
 
 ## Mount Points (app.js)
+
 - /dashboard -> routes/dashboard
+- /notlar -> routes/notes
 - /odalar -> routes/rooms
 - /personel -> routes/personnel
 - /giris-cikis -> routes/entries
@@ -15,6 +17,7 @@
 Not: routes/auth.js icin app.js tarafinda mount gorunmuyor.
 
 ## Endpoint Ozeti
+
 - routes/dashboard.js
   - GET /
 - routes/rooms.js
@@ -94,6 +97,7 @@ Not: routes/auth.js icin app.js tarafinda mount gorunmuyor.
   - GET /cikis
 
 ## Debug Ipuclari
+
 - Session'a bagli logActivity cagrilari bircok route'ta var; req.session.user yoksa hata riski yuksek.
 - personnel ve rooms route'lari en fazla yan etkiye sahip moduller.
 - POST /rooms ve POST /personel akislarinda oda kapasite ve anahtar stogu bir arada etkilenir.

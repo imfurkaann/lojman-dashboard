@@ -174,6 +174,23 @@ function initDatabase() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (recorded_by) REFERENCES users(id)
     );
+
+    -- Notlar
+    CREATE TABLE IF NOT EXISTS notes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      tag TEXT DEFAULT 'normal' CHECK(tag IN ('normal', 'onemli', 'acil')),
+      is_pinned INTEGER DEFAULT 0,
+      due_date DATE,
+      created_by INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_notes_pinned_due ON notes(is_pinned, due_date, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_notes_created_at ON notes(created_at DESC);
   `);
 
   // Şema migration'ları - mevcut veritabanını veri kaybetmeden günceller
