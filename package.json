@@ -10,12 +10,15 @@
     "test:integration": "node --test tests/integration.full.test.js"
   },
   "dependencies": {
+    "@whiskeysockets/baileys": "^7.0.0-rc.9",
     "bcryptjs": "^2.4.3",
     "better-sqlite3": "^11.0.0",
     "ejs": "^3.1.10",
     "exceljs": "^4.4.0",
     "express": "^4.21.0",
     "multer": "^2.1.1",
+    "pino": "^10.3.1",
+    "qrcode": "^1.5.4",
     "socket.io": "^4.8.3"
   },
   "devDependencies": {

@@ -32,6 +32,11 @@
           </a>
         </li>
         <li class="nav-item">
+          <a class="nav-link text-white <%= currentPath.startsWith('/whatsapp') ? 'active' : '' %>" href="/whatsapp">
+            <i class="bi bi-whatsapp"></i> WhatsApp
+          </a>
+        </li>
+        <li class="nav-item">
           <a class="nav-link text-white <%= currentPath.startsWith('/odalar') ? 'active' : '' %>" href="/odalar">
             <i class="bi bi-door-open"></i> Odalar
           </a>
@@ -76,11 +81,13 @@
         <button class="btn btn-link text-dark d-md-none" id="sidebarToggle">
           <i class="bi bi-list fs-4"></i>
         </button>
-        <span class="navbar-text ms-auto text-muted small d-none d-sm-inline">
-          <%= new Date().toLocaleDateString('tr-TR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) %>
-        </span>
-        <span class="navbar-text ms-auto text-muted small d-sm-none">
-          <%= new Date().toLocaleDateString('tr-TR', { year: 'numeric', month: '2-digit', day: '2-digit' }) %>
-        </span>
+        <div class="ms-auto d-flex align-items-center gap-2 flex-wrap justify-content-end">
+          <span class="navbar-text text-muted small d-none d-sm-inline">
+            <%= new Date().toLocaleDateString('tr-TR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) %>
+          </span>
+          <span class="navbar-text text-muted small d-sm-none">
+            <%= new Date().toLocaleDateString('tr-TR', { year: 'numeric', month: '2-digit', day: '2-digit' }) %>
+          </span>
+        </div>
       </nav>
       <div class="container-fluid p-4">

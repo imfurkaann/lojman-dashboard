@@ -14,6 +14,10 @@ const io = socketIo(server, {
 });
 const PORT = Number(process.env.PORT || 3000);
 
+// HTTP Keep-Alive tuning for long-lived WhatsApp connections
+server.keepAliveTimeout = 120000; // 120 seconds (was 5s default)
+server.headersTimeout = 125000; // 125 seconds (must be > keepAliveTimeout)
+
 // Veritabanını başlat
 initDatabase();
 
@@ -51,7 +55,7 @@ app.use((req, res, next) => {
   }
 
   const requestPath = String(req.path || req.originalUrl || '').toLowerCase();
-  const skipLiveRefreshBroadcast = requestPath.endsWith('/demirbas-sorun-coz');
+  const skipLiveRefreshBroadcast = requestPath.startsWith('/whatsapp') || requestPath.endsWith('/demirbas-sorun-coz');
 
   res.on('finish', () => {
     // Yalnizca basarili yanitlardan sonra yayinla.
@@ -92,6 +96,7 @@ app.use('/notlar', require('./routes/notes'));
 app.use('/esya-takip', require('./routes/equipment'));
 app.use('/ziyaretciler', require('./routes/visitors'));
 app.use('/yangin-alarm', require('./routes/alarms'));
+app.use('/whatsapp', require('./routes/whatsapp'));
 
 // Legacy auth URL compatibility
 app.get('/giris', (req, res) => res.redirect('/dashboard'));

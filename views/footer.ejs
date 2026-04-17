@@ -96,6 +96,220 @@
         }
       }
     });
+
+    // WhatsApp bağlantı modalı
+    const whatsappModal = document.getElementById('whatsappConnectionModal');
+    if (whatsappModal) {
+      const connectionBadge = document.getElementById('whatsappConnectionBadge');
+      const connectionStateText = document.getElementById('whatsappConnectionStateText');
+      const connectionAccount = document.getElementById('whatsappConnectionAccount');
+      const connectionLastConnected = document.getElementById('whatsappConnectionLastConnected');
+      const connectionError = document.getElementById('whatsappConnectionError');
+      const registrationBadge = document.getElementById('whatsappRegistrationBadge');
+      const qrWrap = document.getElementById('whatsappQrWrap');
+      const qrHint = document.getElementById('whatsappQrHint');
+      const actionButtons = Array.from(document.querySelectorAll('[data-whatsapp-action]'));
+      let whatsappPollTimer = null;
+
+      function setBadgeState(badge, kind, text) {
+        if (!badge) return;
+        badge.className = `badge bg-${kind}`;
+        badge.textContent = text;
+      }
+
+      function renderQr(state) {
+        if (!qrWrap) return;
+
+        // Show loading spinner if connecting with QR
+        if (state && state.connection === 'connecting' && state.qrDataUrl) {
+          qrWrap.className = 'text-center';
+          qrWrap.innerHTML = `
+            <img id="whatsappQrImage" src="${state.qrDataUrl}" alt="WhatsApp QR" class="img-fluid border rounded-3 bg-white p-2 whatsapp-qr-image">
+            <div class="mt-3">
+              <div class="spinner-border spinner-border-sm text-primary mb-2" role="status">
+                <span class="visually-hidden">Bağlanıyor...</span>
+              </div>
+              <p id="whatsappQrHint" class="small text-muted mb-0">Telefonunuzdan QR kodu okutun. Bağlantı kuruluyor...</p>
+            </div>
+          `;
+          return;
+        }
+
+        if (state && state.qrDataUrl) {
+          qrWrap.className = 'text-center';
+          qrWrap.innerHTML = `
+            <img id="whatsappQrImage" src="${state.qrDataUrl}" alt="WhatsApp QR" class="img-fluid border rounded-3 bg-white p-2 whatsapp-qr-image">
+            <p id="whatsappQrHint" class="small text-muted mt-3 mb-0">Telefonunuzdan QR kodu okutun. Ekran açık kalabilir.</p>
+          `;
+          return;
+        }
+
+        qrWrap.className = 'border border-dashed rounded-3 p-4 text-center bg-light';
+        qrWrap.innerHTML = `
+          <i class="bi bi-qr-code-scan fs-1 text-muted"></i>
+          <p id="whatsappQrHint" class="mb-0 mt-2 text-muted">QR kod görünür olduğunda burada çıkacak.</p>
+        `;
+      }
+
+      function applyWhatsappState(state) {
+        if (!state) return;
+
+        const connection = String(state.connection || 'idle');
+        const connectionLabel = connection === 'open' ? 'Bağlı' : connection === 'logged_out' ? 'Yeniden eşleme gerekli' : connection === 'error' ? 'Hata' : 'Bağlanıyor';
+        const badgeKind = connection === 'open' ? 'success' : connection === 'logged_out' ? 'danger' : connection === 'error' ? 'danger' : 'warning';
+
+        setBadgeState(connectionBadge, badgeKind, connectionLabel);
+        if (connectionStateText) {
+          connectionStateText.textContent = connection;
+        }
+
+        if (connectionAccount) {
+          if (state.me && state.me.id) {
+            connectionAccount.textContent = `Hesap: ${state.me.id}`;
+            connectionAccount.classList.remove('d-none');
+          } else {
+            connectionAccount.textContent = '';
+            connectionAccount.classList.add('d-none');
+          }
+        }
+
+        if (connectionLastConnected) {
+          if (state.lastConnectedAt) {
+            connectionLastConnected.textContent = `Son bağlantı: ${state.lastConnectedAt}`;
+            connectionLastConnected.classList.remove('d-none');
+          } else {
+            connectionLastConnected.textContent = '';
+            connectionLastConnected.classList.add('d-none');
+          }
+        }
+
+        if (connectionError) {
+          if (state.lastError) {
+            connectionError.textContent = state.lastError;
+            connectionError.classList.remove('d-none');
+          } else {
+            connectionError.textContent = '';
+            connectionError.classList.add('d-none');
+          }
+        }
+
+        if (registrationBadge) {
+          registrationBadge.textContent = state.registered ? 'Kayıtlı oturum' : 'Yeni eşleme';
+        }
+
+        renderQr(state);
+
+        // Auto-close modal when connection is established
+        if (state.connection === 'open' && whatsappModal) {
+          setTimeout(() => {
+            const modal = bootstrap.Modal.getInstance(whatsappModal);
+            if (modal) {
+              modal.hide();
+            }
+          }, 500); // Brief delay to show final state
+        }
+      }
+
+      async function fetchWhatsappState() {
+        const response = await fetch('/whatsapp/status', {
+          headers: {
+            Accept: 'application/json'
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error('WhatsApp durumu alınamadı.');
+        }
+
+        const payload = await response.json();
+        return payload.whatsapp || null;
+      }
+
+      async function refreshWhatsappState() {
+        try {
+          const state = await fetchWhatsappState();
+          applyWhatsappState(state);
+
+          if (state && (state.connection === 'open' || state.qrDataUrl)) {
+            stopWhatsappPolling();
+          }
+        } catch (error) {
+          console.error('[WhatsApp] state refresh failed:', error);
+        }
+      }
+
+      function startWhatsappPolling() {
+        if (whatsappPollTimer) return;
+        whatsappPollTimer = window.setInterval(refreshWhatsappState, 1500);
+      }
+
+      function stopWhatsappPolling() {
+        if (!whatsappPollTimer) return;
+        window.clearInterval(whatsappPollTimer);
+        whatsappPollTimer = null;
+      }
+
+      async function triggerWhatsappAction(action) {
+        const response = await fetch('/whatsapp/control?format=json', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            Accept: 'application/json'
+          },
+          body: new URLSearchParams({ action }).toString()
+        });
+
+        if (!response.ok) {
+          throw new Error('WhatsApp kontrol isteği başarısız oldu.');
+        }
+
+        const payload = await response.json();
+        applyWhatsappState(payload.whatsapp || null);
+
+        if (payload.whatsapp && payload.whatsapp.connection !== 'open' && !payload.whatsapp.qrDataUrl) {
+          startWhatsappPolling();
+        }
+
+        if (payload.whatsapp && payload.whatsapp.connection === 'open') {
+          stopWhatsappPolling();
+          // Auto-close modal when connection is established
+          setTimeout(() => {
+            const modal = bootstrap.Modal.getInstance(whatsappModal);
+            if (modal) {
+              modal.hide();
+            }
+          }, 500);
+        }
+
+        return payload.whatsapp || null;
+      }
+
+      actionButtons.forEach((button) => {
+        button.addEventListener('click', async () => {
+          const action = button.getAttribute('data-whatsapp-action');
+          if (!action) return;
+
+          button.disabled = true;
+          try {
+            await triggerWhatsappAction(action);
+            await refreshWhatsappState();
+          } catch (error) {
+            console.error('[WhatsApp] action failed:', error);
+          } finally {
+            button.disabled = false;
+          }
+        });
+      });
+
+      whatsappModal.addEventListener('shown.bs.modal', () => {
+        refreshWhatsappState();
+        startWhatsappPolling();
+      });
+
+      whatsappModal.addEventListener('hidden.bs.modal', () => {
+        stopWhatsappPolling();
+      });
+    }
   </script>
 </body>
 </html>
