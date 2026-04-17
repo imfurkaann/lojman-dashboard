@@ -347,6 +347,32 @@ test('full user interaction flow works end-to-end', async () => {
   assert.ok(equipmentRow, 'Shared equipment row should exist');
   assert.equal(equipmentRow.status, 'teslim_edildi', 'Shared equipment should start as delivered');
 
+  response = await postForm('/whatsapp/equipment-reminder-rules', {
+    'rows[0][item_name]': 'Test Laptop',
+    'rows[0][delay_minutes]': '45',
+    'rows[0][message_template]': '{{item_name}} - {{given_to}} - {{delay_minutes}} dakika',
+    'rows[0][is_enabled]': '1'
+  });
+  assert.equal(response.status, 200, 'WhatsApp equipment reminder save should complete');
+
+  const reminderRule = db.prepare("SELECT * FROM whatsapp_equipment_reminder_rules WHERE item_name = 'Test Laptop' ORDER BY id DESC LIMIT 1").get();
+  assert.ok(reminderRule, 'Equipment reminder rule should exist');
+  assert.equal(reminderRule.delay_minutes, 45, 'Equipment reminder delay should be saved');
+  assert.equal(reminderRule.is_enabled, 1, 'Equipment reminder should be enabled');
+
+  response = await postForm('/whatsapp/daily-templates', {
+    title: 'Test Gunluk Mesaj',
+    send_time: '09:30',
+    message_template: 'Gunluk bilgilendirme {{current_date}} {{current_time}}',
+    is_enabled: '1'
+  });
+  assert.equal(response.status, 200, 'WhatsApp daily template save should complete');
+
+  const dailyTemplateRow = db.prepare("SELECT * FROM whatsapp_daily_templates WHERE title = 'Test Gunluk Mesaj' ORDER BY id DESC LIMIT 1").get();
+  assert.ok(dailyTemplateRow, 'Daily template row should exist');
+  assert.equal(dailyTemplateRow.send_time, '09:30', 'Daily template time should be saved');
+  assert.equal(dailyTemplateRow.is_enabled, 1, 'Daily template should be enabled');
+
   response = await postForm(`/esya-takip/${equipmentRow.id}/durum`, {
     status: 'iade_edildi'
   });

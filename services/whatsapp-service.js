@@ -2,6 +2,15 @@ const path = require('path');
 const fs = require('fs/promises');
 const pino = require('pino');
 const QRCode = require('qrcode');
+const {
+  db,
+  logActivity,
+  getWhatsappSelectedGroups,
+  getWhatsappEquipmentReminderRules,
+  getWhatsappDailyTemplates,
+  upsertWhatsappEquipmentReminderDelivery,
+  upsertWhatsappDailyTemplateDelivery
+} = require('../database');
 
 const AUTH_FOLDER = path.join(__dirname, '..', 'data', 'whatsapp-auth');
 const MAX_MESSAGE_CACHE = 250;
@@ -29,6 +38,8 @@ let reconnectTimer = null;
 let socketEpoch = 0;
 let activeSocketEpoch = 0;
 const messageCache = new Map();
+let equipmentReminderTimer = null;
+let equipmentReminderSweepRunning = false;
 
 function normalizePhoneNumber(phone) {
   const digits = String(phone || '').replace(/\D/g, '');
@@ -60,6 +71,359 @@ function cacheMessage(message) {
       messageCache.delete(firstKey);
     }
   }
+}
+
+function normalizeAutomationKey(value) {
+  return String(value || '').trim().toLocaleLowerCase('tr-TR');
+}
+
+function parseLocalDateTime(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+
+  const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T');
+  const date = new Date(normalized);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function getLocalDateParts(date) {
+  const year = String(date.getFullYear());
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hour = String(date.getHours()).padStart(2, '0');
+  const minute = String(date.getMinutes()).padStart(2, '0');
+
+  return {
+    dateKey: `${year}-${month}-${day}`,
+    timeKey: `${hour}:${minute}`
+  };
+}
+
+function formatAutomationTimestamp(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  return new Intl.DateTimeFormat('tr-TR', {
+    dateStyle: 'short',
+    timeStyle: 'short'
+  }).format(date);
+}
+
+function renderAutomationTemplate(template, context) {
+  const values = {
+    item_name: context.item_name || '',
+    given_to: context.given_to || '',
+    room_number: context.room_number || '-',
+    delay_minutes: String(context.delay_minutes ?? ''),
+    elapsed_minutes: String(context.elapsed_minutes ?? ''),
+    given_at: context.given_at || '',
+    given_at_iso: context.given_at_iso || '',
+    sent_at: context.sent_at || '',
+    current_time: context.current_time || ''
+  };
+
+  return String(template || '').replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key) => {
+    const normalizedKey = String(key || '').trim();
+    return Object.prototype.hasOwnProperty.call(values, normalizedKey) ? values[normalizedKey] : '';
+  });
+}
+
+function renderDailyTemplate(template, context) {
+  const values = {
+    // Eski isimleri uyumluluğu için koruyuyoruz
+    title: context.title || '',
+    current_date: context.current_date || '',
+    current_time: context.current_time || '',
+    group_count: String(context.group_count || 0),
+    
+    // Yeni, daha açıklayıcı isimler
+    template_title: context.title || '',
+    today_date: context.current_date || '',
+    send_time: context.current_time || '',
+    group_numbers: String(context.group_count || 0)
+  };
+
+  return String(template || '').replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key) => {
+    const normalizedKey = String(key || '').trim();
+    return Object.prototype.hasOwnProperty.call(values, normalizedKey) ? values[normalizedKey] : '';
+  });
+}
+
+function ensureEquipmentReminderScheduler() {
+  if (equipmentReminderTimer) {
+    return equipmentReminderTimer;
+  }
+
+  const runSweep = async () => {
+    if (equipmentReminderSweepRunning) {
+      return;
+    }
+
+    equipmentReminderSweepRunning = true;
+    try {
+      await processEquipmentReminders();
+      await processDailyTemplates();
+    } catch (error) {
+      state.lastError = error.message || String(error);
+      logger.warn({ error }, 'failed to process whatsapp equipment reminders');
+    } finally {
+      equipmentReminderSweepRunning = false;
+    }
+  };
+
+  equipmentReminderTimer = setInterval(() => {
+    runSweep().catch((error) => {
+      state.lastError = error.message || String(error);
+    });
+  }, 60000);
+
+  if (typeof equipmentReminderTimer.unref === 'function') {
+    equipmentReminderTimer.unref();
+  }
+
+  runSweep().catch((error) => {
+    state.lastError = error.message || String(error);
+  });
+
+  return equipmentReminderTimer;
+}
+
+async function processEquipmentReminders() {
+  if (!sock || state.connection !== 'open') {
+    return { ok: false, reason: 'whatsapp_not_ready' };
+  }
+
+  const rules = getWhatsappEquipmentReminderRules().filter((rule) => rule && rule.isEnabled);
+  if (!rules.length) {
+    return { ok: true, processed: 0 };
+  }
+
+  const selectedGroups = getWhatsappSelectedGroups();
+  if (!selectedGroups.length) {
+    return { ok: true, processed: 0 };
+  }
+
+  const rulesByItemName = new Map(rules.map((rule) => [normalizeAutomationKey(rule.itemName), rule]));
+  const reminders = db.prepare(`
+    SELECT
+      se.id AS shared_equipment_id,
+      se.item_name,
+      se.given_to,
+      se.room_number,
+      se.given_at,
+      se.status,
+      r.id AS rule_id,
+      r.item_name AS rule_item_name,
+      r.delay_minutes,
+      r.message_template
+    FROM shared_equipment se
+    INNER JOIN whatsapp_equipment_reminder_rules r ON LOWER(TRIM(r.item_name)) = LOWER(TRIM(se.item_name))
+    WHERE se.status = 'teslim_edildi'
+      AND r.is_enabled = 1
+    ORDER BY datetime(se.given_at) ASC, se.id ASC
+  `).all();
+
+  if (!reminders.length) {
+    return { ok: true, processed: 0 };
+  }
+
+  const sentGroupsStmt = db.prepare(`
+    SELECT group_jid
+    FROM whatsapp_equipment_reminder_deliveries
+    WHERE shared_equipment_id = ? AND status = 'sent'
+  `);
+
+  let processedCount = 0;
+
+  for (const reminder of reminders) {
+    const rule = rulesByItemName.get(normalizeAutomationKey(reminder.rule_item_name || reminder.item_name));
+    if (!rule) {
+      continue;
+    }
+
+    const givenAt = parseLocalDateTime(reminder.given_at);
+    if (!givenAt) {
+      continue;
+    }
+
+    const elapsedMinutes = Math.floor((Date.now() - givenAt.getTime()) / 60000);
+    if (elapsedMinutes < Number(rule.delayMinutes || 0)) {
+      continue;
+    }
+
+    const sentGroupRows = sentGroupsStmt.all(reminder.shared_equipment_id);
+    const sentGroupSet = new Set(
+      sentGroupRows.map((row) => normalizeAutomationKey(row.group_jid))
+    );
+    const pendingGroups = selectedGroups.filter((group) => !sentGroupSet.has(normalizeAutomationKey(group.group_jid)));
+
+    if (!pendingGroups.length) {
+      continue;
+    }
+
+    const message = renderAutomationTemplate(rule.messageTemplate, {
+      item_name: reminder.item_name,
+      given_to: reminder.given_to,
+      room_number: reminder.room_number || '-',
+      delay_minutes: rule.delayMinutes,
+      elapsed_minutes: elapsedMinutes,
+      given_at: formatAutomationTimestamp(givenAt),
+      given_at_iso: reminder.given_at,
+      current_time: formatAutomationTimestamp(new Date())
+    });
+
+    let successCount = 0;
+    const failedGroups = [];
+
+    for (const group of pendingGroups) {
+      try {
+        const result = await sendToGroup(group.group_jid, message);
+        upsertWhatsappEquipmentReminderDelivery({
+          shared_equipment_id: reminder.shared_equipment_id,
+          rule_id: reminder.rule_id,
+          group_jid: result.jid,
+          message,
+          status: 'sent'
+        });
+        successCount += 1;
+      } catch (error) {
+        failedGroups.push(group.subject || group.group_jid);
+        try {
+          upsertWhatsappEquipmentReminderDelivery({
+            shared_equipment_id: reminder.shared_equipment_id,
+            rule_id: reminder.rule_id,
+            group_jid: group.group_jid,
+            message,
+            status: 'failed',
+            error_message: error.message || String(error)
+          });
+        } catch (deliveryError) {
+          logger.warn({ error: deliveryError }, 'failed to persist failed whatsapp reminder delivery');
+        }
+      }
+    }
+
+    if (successCount > 0) {
+      processedCount += 1;
+      const summary = `${reminder.item_name} eşyası için WhatsApp otomatik hatırlatma gönderildi: ${successCount} grup`;
+      logActivity(
+        'whatsapp_auto_send',
+        summary,
+        JSON.stringify({
+          item_name: reminder.item_name,
+          given_to: reminder.given_to,
+          room_number: reminder.room_number,
+          delay_minutes: rule.delayMinutes,
+          elapsed_minutes: elapsedMinutes,
+          sent_groups: pendingGroups.filter((group) => !failedGroups.includes(group.subject || group.group_jid)).map((group) => group.group_jid),
+          failed_groups: failedGroups,
+          message
+        }),
+        null
+      );
+    }
+  }
+
+  return { ok: true, processed: processedCount };
+}
+
+async function processDailyTemplates() {
+  if (!sock || state.connection !== 'open') {
+    return { ok: false, reason: 'whatsapp_not_ready' };
+  }
+
+  const templates = getWhatsappDailyTemplates().filter((template) => template && template.isEnabled);
+  if (!templates.length) {
+    return { ok: true, processed: 0 };
+  }
+
+  const selectedGroups = getWhatsappSelectedGroups();
+  if (!selectedGroups.length) {
+    return { ok: true, processed: 0 };
+  }
+
+  const now = new Date();
+  const { dateKey, timeKey } = getLocalDateParts(now);
+  const dueTemplates = templates.filter((template) => String(template.sendTime || '').trim() === timeKey);
+  if (!dueTemplates.length) {
+    return { ok: true, processed: 0 };
+  }
+
+  const sentGroupsStmt = db.prepare(`
+    SELECT group_jid
+    FROM whatsapp_daily_template_deliveries
+    WHERE template_id = ? AND send_date = ? AND status = 'sent'
+  `);
+
+  let processedCount = 0;
+
+  for (const template of dueTemplates) {
+    const sentRows = sentGroupsStmt.all(template.id, dateKey);
+    const sentGroupSet = new Set(sentRows.map((row) => normalizeAutomationKey(row.group_jid)));
+    const pendingGroups = selectedGroups.filter((group) => !sentGroupSet.has(normalizeAutomationKey(group.group_jid)));
+    if (!pendingGroups.length) {
+      continue;
+    }
+
+    const message = renderDailyTemplate(template.messageTemplate, {
+      title: template.title,
+      current_date: dateKey,
+      current_time: timeKey,
+      group_count: pendingGroups.length
+    });
+
+    let successCount = 0;
+    const failedGroups = [];
+
+    for (const group of pendingGroups) {
+      try {
+        const result = await sendToGroup(group.group_jid, message);
+        upsertWhatsappDailyTemplateDelivery({
+          template_id: template.id,
+          group_jid: result.jid,
+          send_date: dateKey,
+          message,
+          status: 'sent'
+        });
+        successCount += 1;
+      } catch (error) {
+        failedGroups.push(group.subject || group.group_jid);
+        try {
+          upsertWhatsappDailyTemplateDelivery({
+            template_id: template.id,
+            group_jid: group.group_jid,
+            send_date: dateKey,
+            message,
+            status: 'failed',
+            error_message: error.message || String(error)
+          });
+        } catch (deliveryError) {
+          logger.warn({ error: deliveryError }, 'failed to persist failed daily template delivery');
+        }
+      }
+    }
+
+    if (successCount > 0) {
+      processedCount += 1;
+      logActivity(
+        'whatsapp_daily_template_send',
+        `WhatsApp günlük şablon gönderildi: ${template.title} (${successCount} grup)`,
+        JSON.stringify({
+          template_id: template.id,
+          title: template.title,
+          send_date: dateKey,
+          send_time: timeKey,
+          sent_groups: pendingGroups.filter((group) => !failedGroups.includes(group.subject || group.group_jid)).map((group) => group.group_jid),
+          failed_groups: failedGroups,
+          message
+        }),
+        null
+      );
+    }
+  }
+
+  return { ok: true, processed: processedCount };
 }
 
 function groupMapToArray(groupMap) {
@@ -431,11 +795,16 @@ function getSnapshot() {
 
 module.exports = {
   ensureStarted,
+  ensureEquipmentReminderScheduler,
   getSnapshot,
   normalizePhoneNumber,
   refreshGroups,
   resetConnection,
   restartConnection,
   sendToGroup,
-  sendToPerson
+  sendToPerson,
+  processEquipmentReminders,
+  processDailyTemplates,
+  renderAutomationTemplate,
+  renderDailyTemplate
 };

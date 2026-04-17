@@ -26,6 +26,24 @@
       console.log('Socket.IO bağlantısı koptu');
     });
 
+    const whatsappNoticeToast = document.getElementById('whatsappNoticeToast');
+    if (whatsappNoticeToast) {
+      const toast = bootstrap.Toast.getOrCreateInstance(whatsappNoticeToast, {
+        delay: 2500,
+        autohide: true
+      });
+      toast.show();
+    }
+
+    const whatsappErrorToast = document.getElementById('whatsappErrorToast');
+    if (whatsappErrorToast) {
+      const toast = bootstrap.Toast.getOrCreateInstance(whatsappErrorToast, {
+        delay: 2500,
+        autohide: true
+      });
+      toast.show();
+    }
+
     // Uygulamanin herhangi bir yerinde veri degisikligi oldugunda aktif sayfayi tazeler.
     let liveRefreshTimer = null;
     let pageIsNavigating = false;
@@ -108,8 +126,21 @@
       const registrationBadge = document.getElementById('whatsappRegistrationBadge');
       const qrWrap = document.getElementById('whatsappQrWrap');
       const qrHint = document.getElementById('whatsappQrHint');
+      const whatsappGroupCount = document.getElementById('whatsappGroupCount');
+      const selectedGroupsWrap = document.getElementById('whatsappSelectedGroupsWrap');
+      const selectedGroupsCount = document.getElementById('whatsappSelectedGroupsCount');
+      const availableGroupsWrap = document.getElementById('whatsappAvailableGroupsWrap');
+      const availableGroupsCount = document.getElementById('whatsappAvailableGroupsCount');
+      const whatsappSendButton = document.getElementById('whatsappSendButton');
+      const whatsappSendHint = document.getElementById('whatsappSendHint');
+      const whatsappSendForm = document.getElementById('whatsappSendForm');
       const actionButtons = Array.from(document.querySelectorAll('[data-whatsapp-action]'));
       let whatsappPollTimer = null;
+      let closeModalWhenOpen = false;
+
+      function getSelectedGroupSet(groups) {
+        return new Set((Array.isArray(groups) ? groups : []).map((group) => String(group.group_jid || group.id || '').trim()).filter(Boolean));
+      }
 
       function setBadgeState(badge, kind, text) {
         if (!badge) return;
@@ -149,6 +180,197 @@
           <i class="bi bi-qr-code-scan fs-1 text-muted"></i>
           <p id="whatsappQrHint" class="mb-0 mt-2 text-muted">QR kod görünür olduğunda burada çıkacak.</p>
         `;
+      }
+
+      function renderSelectedGroups(state) {
+        if (!selectedGroupsWrap) return;
+
+        const selectedGroups = Array.isArray(state && state.selectedGroups) ? state.selectedGroups : [];
+        if (selectedGroupsCount) {
+          selectedGroupsCount.textContent = `${selectedGroups.length} grup`;
+        }
+
+        if (whatsappSendButton) {
+          whatsappSendButton.disabled = selectedGroups.length === 0;
+        }
+
+        if (whatsappSendHint) {
+          whatsappSendHint.textContent = selectedGroups.length
+            ? 'Mesaj bu gruplara aynı anda gönderilir.'
+            : 'Önce modalden grup seçin.';
+        }
+
+        if (!selectedGroups.length) {
+          selectedGroupsWrap.innerHTML = '<div class="small text-muted">Henüz seçili grup yok. Modalden gruplara tıklayarak ekleyin.</div>';
+          return;
+        }
+
+        selectedGroupsWrap.innerHTML = selectedGroups.map((group) => `
+          <button type="button" class="btn btn-success btn-sm rounded-pill d-inline-flex align-items-center gap-2"
+            data-whatsapp-selected-remove
+            data-group-jid="${String(group.group_jid || group.id || '').replace(/"/g, '&quot;')}"
+            data-group-subject="${String(group.subject || '').replace(/"/g, '&quot;')}">
+            <span>${String(group.subject || group.group_jid || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span>
+            <i class="bi bi-x-circle"></i>
+          </button>
+        `).join('');
+      }
+
+      function renderAvailableGroups(state) {
+        if (!availableGroupsWrap) return;
+
+        const groups = Array.isArray(state && state.groups) ? state.groups : [];
+        const selectedGroups = Array.isArray(state && state.selectedGroups) ? state.selectedGroups : [];
+        const selectedSet = getSelectedGroupSet(selectedGroups);
+
+        if (whatsappGroupCount) {
+          whatsappGroupCount.textContent = `${groups.length} grup yüklü`;
+        }
+
+        if (availableGroupsCount) {
+          availableGroupsCount.textContent = `${groups.length} grup`;
+        }
+
+        if (!groups.length) {
+          availableGroupsWrap.innerHTML = '<div class="col-12"><div class="text-muted small">Bağlantı tamamlanınca gruplar burada görünecek.</div></div>';
+          return;
+        }
+
+        availableGroupsWrap.innerHTML = groups.map((group) => {
+          const groupJid = String(group.id || '').replace(/"/g, '&quot;');
+          const groupSubject = String(group.subject || group.id || '').replace(/"/g, '&quot;');
+          const isSelected = selectedSet.has(String(group.id || '').trim());
+          const buttonClass = isSelected ? 'btn-success' : 'btn-outline-secondary';
+          const badgeClass = isSelected ? 'bg-light text-dark' : 'bg-secondary';
+          const badgeText = isSelected ? 'Seçili' : 'Ekle';
+          return `
+            <div class="col-12 col-md-6 col-xl-4">
+              <button type="button"
+                class="btn w-100 text-start ${buttonClass}"
+                data-whatsapp-group-toggle
+                data-group-jid="${groupJid}"
+                data-group-subject="${groupSubject}"
+                data-group-participants="${String(group.participants || 0)}"
+                data-group-community="${group.isCommunity ? '1' : '0'}">
+                <div class="d-flex align-items-center justify-content-between gap-2">
+                  <div>
+                    <div class="fw-semibold">${String(group.subject || group.id || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+                    <div class="small opacity-75">${String(group.participants || 0)} kişi</div>
+                  </div>
+                  <span class="badge ${badgeClass}">${badgeText}</span>
+                </div>
+              </button>
+            </div>
+          `;
+        }).join('');
+      }
+
+      function renderGroupPanels(state) {
+        renderSelectedGroups(state);
+        renderAvailableGroups(state);
+      }
+
+      async function syncSelectedGroup(group, method) {
+        const normalizedMethod = method === 'DELETE' ? 'DELETE' : 'POST';
+        const url = normalizedMethod === 'DELETE'
+          ? `/whatsapp/selected-groups/${encodeURIComponent(group.group_jid || group.id || '')}`
+          : '/whatsapp/selected-groups';
+
+        const response = await fetch(url, {
+          method: normalizedMethod,
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json'
+          },
+          body: normalizedMethod === 'DELETE'
+            ? undefined
+            : JSON.stringify({
+                group_jid: group.group_jid || group.id,
+                subject: group.subject,
+                participants: group.participants,
+                isCommunity: group.isCommunity
+              })
+        });
+
+        if (!response.ok) {
+          throw new Error('Grup kaydı güncellenemedi.');
+        }
+
+        await refreshWhatsappState();
+      }
+
+      if (selectedGroupsWrap) {
+        selectedGroupsWrap.addEventListener('click', async (event) => {
+          const button = event.target.closest('[data-whatsapp-selected-remove]');
+          if (!button) return;
+
+          event.preventDefault();
+          const group = {
+            group_jid: button.getAttribute('data-group-jid'),
+            subject: button.getAttribute('data-group-subject') || button.getAttribute('data-group-jid')
+          };
+
+          try {
+            await syncSelectedGroup(group, 'DELETE');
+          } catch (error) {
+            console.error('[WhatsApp] selected group remove failed:', error);
+          }
+        });
+      }
+
+      if (availableGroupsWrap) {
+        availableGroupsWrap.addEventListener('click', async (event) => {
+          const button = event.target.closest('[data-whatsapp-group-toggle]');
+          if (!button) return;
+
+          event.preventDefault();
+          const group = {
+            id: button.getAttribute('data-group-jid'),
+            subject: button.getAttribute('data-group-subject') || button.getAttribute('data-group-jid'),
+            participants: Number(button.getAttribute('data-group-participants') || 0),
+            isCommunity: button.getAttribute('data-group-community') === '1'
+          };
+
+          const isSelected = button.classList.contains('btn-success');
+          try {
+            await syncSelectedGroup(group, isSelected ? 'DELETE' : 'POST');
+          } catch (error) {
+            console.error('[WhatsApp] available group toggle failed:', error);
+          }
+        });
+      }
+
+      if (whatsappSendForm) {
+        whatsappSendForm.addEventListener('submit', async (event) => {
+          event.preventDefault();
+
+          if (whatsappSendButton) {
+            whatsappSendButton.disabled = true;
+          }
+
+          try {
+            const response = await fetch('/whatsapp/send-selected-groups', {
+              method: 'POST',
+              headers: {
+                Accept: 'application/json'
+              },
+              body: new URLSearchParams(new FormData(whatsappSendForm)).toString()
+            });
+
+            if (!response.ok) {
+              throw new Error('Mesaj gönderilmedi.');
+            }
+
+            // Force the browser back to the canonical page to avoid POST URL persistence.
+            window.location.assign('/whatsapp?notice=sent');
+          } catch (error) {
+            window.location.assign('/whatsapp?error=send_failed');
+          } finally {
+            if (whatsappSendButton) {
+              whatsappSendButton.disabled = false;
+            }
+          }
+        });
       }
 
       function applyWhatsappState(state) {
@@ -198,14 +420,14 @@
         }
 
         renderQr(state);
+        renderGroupPanels(state);
 
-        // Auto-close modal when connection is established
-        if (state.connection === 'open' && whatsappModal) {
+        // Auto-close modal only after a user-initiated action is waiting for connection
+        if (state.connection === 'open' && whatsappModal && closeModalWhenOpen) {
+          closeModalWhenOpen = false;
           setTimeout(() => {
-            const modal = bootstrap.Modal.getInstance(whatsappModal);
-            if (modal) {
-              modal.hide();
-            }
+            const modal = bootstrap.Modal.getOrCreateInstance(whatsappModal);
+            modal.hide();
           }, 500); // Brief delay to show final state
         }
       }
@@ -230,8 +452,13 @@
           const state = await fetchWhatsappState();
           applyWhatsappState(state);
 
-          if (state && (state.connection === 'open' || state.qrDataUrl)) {
+          if (state && state.connection === 'open' && closeModalWhenOpen) {
+            closeModalWhenOpen = false;
             stopWhatsappPolling();
+            if (whatsappModal) {
+              const modal = bootstrap.Modal.getOrCreateInstance(whatsappModal);
+              modal.hide();
+            }
           }
         } catch (error) {
           console.error('[WhatsApp] state refresh failed:', error);
@@ -267,18 +494,19 @@
         applyWhatsappState(payload.whatsapp || null);
 
         if (payload.whatsapp && payload.whatsapp.connection !== 'open' && !payload.whatsapp.qrDataUrl) {
+          closeModalWhenOpen = true;
           startWhatsappPolling();
         }
 
         if (payload.whatsapp && payload.whatsapp.connection === 'open') {
-          stopWhatsappPolling();
-          // Auto-close modal when connection is established
-          setTimeout(() => {
-            const modal = bootstrap.Modal.getInstance(whatsappModal);
-            if (modal) {
+          if (closeModalWhenOpen) {
+            stopWhatsappPolling();
+            // Auto-close modal when connection is established
+            setTimeout(() => {
+              const modal = bootstrap.Modal.getOrCreateInstance(whatsappModal);
               modal.hide();
-            }
-          }, 500);
+            }, 500);
+          }
         }
 
         return payload.whatsapp || null;
@@ -308,7 +536,9 @@
 
       whatsappModal.addEventListener('hidden.bs.modal', () => {
         stopWhatsappPolling();
+        closeModalWhenOpen = false;
       });
+
     }
   </script>
 </body>

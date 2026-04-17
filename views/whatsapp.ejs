@@ -19,19 +19,32 @@
         <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#whatsappConnectionModal">
           <i class="bi bi-sliders me-1"></i> Bağlantıyı Yönet
         </button>
+        <a href="/whatsapp/mesaj-yonetimi" class="btn btn-outline-primary btn-sm">
+          <i class="bi bi-chat-left-text me-1"></i> Mesaj Yönetimi
+        </a>
       </div>
     </div>
   </div>
 
   <% if (notice) { %>
-    <div class="col-12">
-      <div class="alert alert-success mb-0"><%= notice %></div>
+    <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1080;">
+      <div id="whatsappNoticeToast" class="toast align-items-center text-bg-success border-0 shadow-sm" role="status" aria-live="polite" aria-atomic="true" data-bs-delay="2500">
+        <div class="d-flex">
+          <div class="toast-body py-2 px-3 small fw-semibold"><%= notice %></div>
+          <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Kapat"></button>
+        </div>
+      </div>
     </div>
   <% } %>
 
   <% if (error) { %>
-    <div class="col-12">
-      <div class="alert alert-danger mb-0"><%= error %></div>
+    <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1080;">
+      <div id="whatsappErrorToast" class="toast align-items-center text-bg-danger border-0 shadow-sm" role="status" aria-live="polite" aria-atomic="true" data-bs-delay="2500">
+        <div class="d-flex">
+          <div class="toast-body py-2 px-3 small fw-semibold"><%= error %></div>
+          <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Kapat"></button>
+        </div>
+      </div>
     </div>
   <% } %>
 
@@ -40,42 +53,51 @@
       <div class="card-body">
         <div class="d-flex align-items-center justify-content-between mb-3">
           <h2 class="h5 mb-0">Mesaj Gönder</h2>
-          <span class="badge bg-light text-dark"><%= whatsapp.groups.length %> grup yüklü</span>
+          <span id="whatsappGroupCount" class="badge bg-light text-dark"><%= whatsapp.groups.length %> grup yüklü</span>
         </div>
 
         <div class="row g-4">
           <div class="col-12">
             <div class="border rounded-3 p-3 h-100">
-              <h3 class="h6">Gruba gönder</h3>
-              <form method="post" action="/whatsapp/send-group" class="mt-3">
-                <div class="mb-3">
-                  <label class="form-label">Grup</label>
-                  <select class="form-select" name="group_jid">
-                    <option value="">Grup seçin</option>
-                    <% whatsapp.groups.forEach((group) => { %>
-                      <option value="<%= group.id %>" <%= String(formData.group_jid || '') === String(group.id) ? 'selected' : '' %>>
-                        <%= group.subject %> (<%= group.participants %> kişi)
-                      </option>
-                    <% }) %>
-                  </select>
-                </div>
-
+              <h3 class="h6">Kaydedilen gruplara gönder</h3>
+              <form method="post" action="/whatsapp/send-selected-groups" class="mt-3" id="whatsappSendForm">
                 <div class="mb-3">
                   <label class="form-label">Mesaj</label>
                   <textarea class="form-control" name="message" rows="5" placeholder="Grup mesajı"><%= formData.message || '' %></textarea>
                 </div>
 
-                <button type="submit" class="btn btn-primary w-100">
-                  <i class="bi bi-chat-dots me-1"></i> Gruba Gönder
+                <button type="submit" class="btn btn-primary w-100" id="whatsappSendButton" <%= selectedGroups.length ? '' : 'disabled' %>>
+                  <i class="bi bi-chat-dots me-1"></i> Kaydedilen gruplara gönder
                 </button>
+                <div class="small text-muted mt-2" id="whatsappSendHint">
+                  Mesaj, aşağıda seçili olarak tuttuğunuz gruplara gönderilir.
+                </div>
               </form>
+
+              <div class="border rounded-3 p-3 mt-4 bg-success-subtle">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                  <h4 class="h6 mb-0">Seçili Gruplar</h4>
+                  <span id="whatsappSelectedGroupsCount" class="badge bg-success"><%= selectedGroups.length %> grup</span>
+                </div>
+                <div id="whatsappSelectedGroupsWrap" class="d-flex flex-wrap gap-2">
+                  <% if (selectedGroups.length) { %>
+                    <% selectedGroups.forEach((group) => { %>
+                      <button type="button" class="btn btn-success btn-sm rounded-pill d-inline-flex align-items-center gap-2" data-whatsapp-selected-remove data-group-jid="<%= group.group_jid %>" data-group-subject="<%= group.subject %>">
+                        <span><%= group.subject %></span>
+                        <i class="bi bi-x-circle"></i>
+                      </button>
+                    <% }) %>
+                  <% } else { %>
+                    <div class="small text-muted">Henüz seçili grup yok. Modalden gruplara tıklayarak ekleyin.</div>
+                  <% } %>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </div>
     </div>
   </div>
-
 </div>
 
 <div class="modal fade" id="whatsappConnectionModal" tabindex="-1" aria-labelledby="whatsappConnectionModalLabel" aria-hidden="true">
@@ -137,6 +159,45 @@
                   <p id="whatsappQrHint" class="mb-0 mt-2 text-muted">QR kod görünür olduğunda burada çıkacak.</p>
                 </div>
               <% } %>
+            </div>
+          </div>
+
+          <div class="col-12">
+            <div class="border rounded-3 p-3 bg-light">
+              <div class="d-flex align-items-center justify-content-between mb-2">
+                <h3 class="h6 mb-0">WhatsApp Grupları</h3>
+                <span id="whatsappAvailableGroupsCount" class="badge bg-light text-dark"><%= whatsapp.groups.length %> grup</span>
+              </div>
+              <div class="small text-muted mb-3">Bir gruba dokunarak seçebilir veya seçimi kaldırabilirsiniz. Seçili gruplar alttaki yeşil alanda tutulur.</div>
+              <div id="whatsappAvailableGroupsWrap" class="row g-2">
+                <% if (whatsapp.groups.length) { %>
+                  <% whatsapp.groups.forEach((group) => { %>
+                    <div class="col-12 col-md-6 col-xl-4">
+                      <button type="button"
+                        class="btn w-100 text-start <%= selectedGroups.some((selected) => String(selected.group_jid) === String(group.id)) ? 'btn-success' : 'btn-outline-secondary' %>"
+                        data-whatsapp-group-toggle
+                        data-group-jid="<%= group.id %>"
+                        data-group-subject="<%= group.subject %>"
+                        data-group-participants="<%= group.participants %>"
+                        data-group-community="<%= group.isCommunity ? '1' : '0' %>">
+                        <div class="d-flex align-items-center justify-content-between gap-2">
+                          <div>
+                            <div class="fw-semibold"><%= group.subject %></div>
+                            <div class="small opacity-75"><%= group.participants %> kişi</div>
+                          </div>
+                          <span class="badge <%= selectedGroups.some((selected) => String(selected.group_jid) === String(group.id)) ? 'bg-light text-dark' : 'bg-secondary' %>">
+                            <%= selectedGroups.some((selected) => String(selected.group_jid) === String(group.id)) ? 'Seçili' : 'Ekle' %>
+                          </span>
+                        </div>
+                      </button>
+                    </div>
+                  <% }) %>
+                <% } else { %>
+                  <div class="col-12">
+                    <div class="text-muted small">Bağlantı tamamlanınca gruplar burada görünecek.</div>
+                  </div>
+                <% } %>
+              </div>
             </div>
           </div>
         </div>

@@ -3,6 +3,7 @@ const path = require('path');
 const http = require('http');
 const socketIo = require('socket.io');
 const { initDatabase } = require('./database');
+const whatsappService = require('./services/whatsapp-service');
 
 const app = express();
 const server = http.createServer(app);
@@ -20,6 +21,7 @@ server.headersTimeout = 125000; // 125 seconds (must be > keepAliveTimeout)
 
 // Veritabanını başlat
 initDatabase();
+whatsappService.ensureEquipmentReminderScheduler();
 
 // EJS template engine
 app.set('view engine', 'ejs');

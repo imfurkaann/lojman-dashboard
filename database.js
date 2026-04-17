@@ -191,6 +191,143 @@ function initDatabase() {
 
     CREATE INDEX IF NOT EXISTS idx_notes_pinned_due ON notes(is_pinned, due_date, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_notes_created_at ON notes(created_at DESC);
+
+    -- WhatsApp'ta kaydedilen gruplar
+    CREATE TABLE IF NOT EXISTS whatsapp_selected_groups (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      group_jid TEXT UNIQUE NOT NULL,
+      subject TEXT NOT NULL,
+      participants INTEGER DEFAULT 0,
+      is_community INTEGER DEFAULT 0,
+      added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_whatsapp_selected_groups_updated_at ON whatsapp_selected_groups(updated_at DESC);
+
+    CREATE TABLE IF NOT EXISTS whatsapp_equipment_reminder_rules (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      item_name TEXT UNIQUE NOT NULL,
+      delay_minutes INTEGER NOT NULL DEFAULT 0,
+      message_template TEXT NOT NULL,
+      is_enabled INTEGER DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_whatsapp_equipment_reminder_rules_enabled ON whatsapp_equipment_reminder_rules(is_enabled, delay_minutes, updated_at DESC);
+
+    CREATE TABLE IF NOT EXISTS whatsapp_equipment_reminder_deliveries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      shared_equipment_id INTEGER NOT NULL,
+      rule_id INTEGER NOT NULL,
+      group_jid TEXT NOT NULL,
+      message TEXT NOT NULL,
+      status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'sent', 'failed')),
+      sent_at DATETIME,
+      last_attempt_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      error_message TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(shared_equipment_id, group_jid),
+      FOREIGN KEY (shared_equipment_id) REFERENCES shared_equipment(id),
+      FOREIGN KEY (rule_id) REFERENCES whatsapp_equipment_reminder_rules(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_whatsapp_equipment_reminder_deliveries_status ON whatsapp_equipment_reminder_deliveries(status, last_attempt_at DESC);
+
+    CREATE TABLE IF NOT EXISTS whatsapp_daily_templates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      send_time TEXT NOT NULL,
+      message_template TEXT NOT NULL,
+      is_enabled INTEGER DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_whatsapp_daily_templates_enabled_time ON whatsapp_daily_templates(is_enabled, send_time, updated_at DESC);
+
+    CREATE TABLE IF NOT EXISTS whatsapp_daily_template_deliveries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      template_id INTEGER NOT NULL,
+      group_jid TEXT NOT NULL,
+      send_date TEXT NOT NULL,
+      message TEXT NOT NULL,
+      status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'sent', 'failed')),
+      sent_at DATETIME,
+      last_attempt_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      error_message TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(template_id, group_jid, send_date),
+      FOREIGN KEY (template_id) REFERENCES whatsapp_daily_templates(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_whatsapp_daily_template_deliveries_lookup ON whatsapp_daily_template_deliveries(template_id, send_date, status);
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS whatsapp_equipment_reminder_rules (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      item_name TEXT UNIQUE NOT NULL,
+      delay_minutes INTEGER NOT NULL DEFAULT 0,
+      message_template TEXT NOT NULL,
+      is_enabled INTEGER DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_whatsapp_equipment_reminder_rules_enabled ON whatsapp_equipment_reminder_rules(is_enabled, delay_minutes, updated_at DESC);
+
+    CREATE TABLE IF NOT EXISTS whatsapp_equipment_reminder_deliveries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      shared_equipment_id INTEGER NOT NULL,
+      rule_id INTEGER NOT NULL,
+      group_jid TEXT NOT NULL,
+      message TEXT NOT NULL,
+      status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'sent', 'failed')),
+      sent_at DATETIME,
+      last_attempt_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      error_message TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(shared_equipment_id, group_jid),
+      FOREIGN KEY (shared_equipment_id) REFERENCES shared_equipment(id),
+      FOREIGN KEY (rule_id) REFERENCES whatsapp_equipment_reminder_rules(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_whatsapp_equipment_reminder_deliveries_status ON whatsapp_equipment_reminder_deliveries(status, last_attempt_at DESC);
+
+    CREATE TABLE IF NOT EXISTS whatsapp_daily_templates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      send_time TEXT NOT NULL,
+      message_template TEXT NOT NULL,
+      is_enabled INTEGER DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_whatsapp_daily_templates_enabled_time ON whatsapp_daily_templates(is_enabled, send_time, updated_at DESC);
+
+    CREATE TABLE IF NOT EXISTS whatsapp_daily_template_deliveries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      template_id INTEGER NOT NULL,
+      group_jid TEXT NOT NULL,
+      send_date TEXT NOT NULL,
+      message TEXT NOT NULL,
+      status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'sent', 'failed')),
+      sent_at DATETIME,
+      last_attempt_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      error_message TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(template_id, group_jid, send_date),
+      FOREIGN KEY (template_id) REFERENCES whatsapp_daily_templates(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_whatsapp_daily_template_deliveries_lookup ON whatsapp_daily_template_deliveries(template_id, send_date, status);
   `);
 
   // Şema migration'ları - mevcut veritabanını veri kaybetmeden günceller
@@ -427,6 +564,57 @@ function runMigrations() {
       ELSE MAX(COALESCE(quantity, 0), 0)
     END
   `);
+
+  const reminderRulesColumns = db.prepare('PRAGMA table_info(whatsapp_equipment_reminder_rules)').all();
+  if (!reminderRulesColumns.some(col => col.name === 'updated_at')) {
+    db.exec("ALTER TABLE whatsapp_equipment_reminder_rules ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP");
+  }
+  if (!reminderRulesColumns.some(col => col.name === 'title')) {
+    db.exec("ALTER TABLE whatsapp_equipment_reminder_rules ADD COLUMN title TEXT");
+    console.log('Migration: whatsapp_equipment_reminder_rules tablosuna title alanı eklendi');
+  }
+
+  const reminderDeliveriesColumns = db.prepare('PRAGMA table_info(whatsapp_equipment_reminder_deliveries)').all();
+  if (reminderDeliveriesColumns.length) {
+    if (!reminderDeliveriesColumns.some(col => col.name === 'status')) {
+      db.exec("ALTER TABLE whatsapp_equipment_reminder_deliveries ADD COLUMN status TEXT DEFAULT 'pending'");
+    }
+    if (!reminderDeliveriesColumns.some(col => col.name === 'sent_at')) {
+      db.exec('ALTER TABLE whatsapp_equipment_reminder_deliveries ADD COLUMN sent_at DATETIME');
+    }
+    if (!reminderDeliveriesColumns.some(col => col.name === 'last_attempt_at')) {
+      db.exec("ALTER TABLE whatsapp_equipment_reminder_deliveries ADD COLUMN last_attempt_at DATETIME DEFAULT CURRENT_TIMESTAMP");
+    }
+    if (!reminderDeliveriesColumns.some(col => col.name === 'error_message')) {
+      db.exec('ALTER TABLE whatsapp_equipment_reminder_deliveries ADD COLUMN error_message TEXT');
+    }
+  }
+
+  const dailyTemplatesColumns = db.prepare('PRAGMA table_info(whatsapp_daily_templates)').all();
+  if (dailyTemplatesColumns.length) {
+    if (!dailyTemplatesColumns.some(col => col.name === 'is_enabled')) {
+      db.exec('ALTER TABLE whatsapp_daily_templates ADD COLUMN is_enabled INTEGER DEFAULT 1');
+    }
+    if (!dailyTemplatesColumns.some(col => col.name === 'updated_at')) {
+      db.exec('ALTER TABLE whatsapp_daily_templates ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP');
+    }
+  }
+
+  const dailyDeliveriesColumns = db.prepare('PRAGMA table_info(whatsapp_daily_template_deliveries)').all();
+  if (dailyDeliveriesColumns.length) {
+    if (!dailyDeliveriesColumns.some(col => col.name === 'status')) {
+      db.exec("ALTER TABLE whatsapp_daily_template_deliveries ADD COLUMN status TEXT DEFAULT 'pending'");
+    }
+    if (!dailyDeliveriesColumns.some(col => col.name === 'sent_at')) {
+      db.exec('ALTER TABLE whatsapp_daily_template_deliveries ADD COLUMN sent_at DATETIME');
+    }
+    if (!dailyDeliveriesColumns.some(col => col.name === 'last_attempt_at')) {
+      db.exec("ALTER TABLE whatsapp_daily_template_deliveries ADD COLUMN last_attempt_at DATETIME DEFAULT CURRENT_TIMESTAMP");
+    }
+    if (!dailyDeliveriesColumns.some(col => col.name === 'error_message')) {
+      db.exec('ALTER TABLE whatsapp_daily_template_deliveries ADD COLUMN error_message TEXT');
+    }
+  }
 
   // Personnel tablosuna TC kimlik, fotoğraf ve form_signed alanları ekle
   const personnelColumns = db.prepare('PRAGMA table_info(personnel)').all();
@@ -899,6 +1087,318 @@ function recordRoomExit(personnelId, roomId, exitAt) {
   );
 }
 
+function normalizeWhatsappGroupJid(groupJid) {
+  const raw = String(groupJid || '').trim();
+  if (!raw) return '';
+  return raw.includes('@') ? raw : `${raw}@g.us`;
+}
+
+function mapWhatsappSelectedGroup(row) {
+  if (!row) return null;
+  return {
+    id: row.group_jid,
+    group_jid: row.group_jid,
+    subject: row.subject,
+    participants: Number(row.participants || 0),
+    isCommunity: !!row.is_community,
+    addedAt: row.added_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function normalizeWhatsappEquipmentReminderRule(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    title: row.title,
+    itemName: row.item_name,
+    delayMinutes: Number(row.delay_minutes || 0),
+    messageTemplate: row.message_template,
+    isEnabled: Number(row.is_enabled || 0) === 1,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function normalizeWhatsappDailyTemplate(row) {
+  if (!row) return null;
+  return {
+    id: Number(row.id),
+    title: row.title,
+    sendTime: row.send_time,
+    messageTemplate: row.message_template,
+    isEnabled: Number(row.is_enabled || 0) === 1,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function getWhatsappSelectedGroups() {
+  return db.prepare(`
+    SELECT group_jid, subject, participants, is_community, added_at, updated_at
+    FROM whatsapp_selected_groups
+    ORDER BY datetime(updated_at) DESC, id DESC
+  `).all().map(mapWhatsappSelectedGroup);
+}
+
+function upsertWhatsappSelectedGroup(group) {
+  const groupJid = normalizeWhatsappGroupJid(group && (group.group_jid || group.id));
+  const subject = String(group && (group.subject || group.name || groupJid) || groupJid).trim() || groupJid;
+  const participants = Number(group && group.participants ? group.participants : 0);
+  const isCommunity = group && (group.isCommunity || group.is_community) ? 1 : 0;
+
+  if (!groupJid) {
+    throw new Error('Grup bilgisi geçersiz.');
+  }
+
+  db.prepare(`
+    INSERT INTO whatsapp_selected_groups (group_jid, subject, participants, is_community, added_at, updated_at)
+    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    ON CONFLICT(group_jid) DO UPDATE SET
+      subject = excluded.subject,
+      participants = excluded.participants,
+      is_community = excluded.is_community,
+      updated_at = CURRENT_TIMESTAMP
+  `).run(groupJid, subject, participants, isCommunity);
+
+  return getWhatsappSelectedGroups().find((item) => item.group_jid === groupJid) || null;
+}
+
+function removeWhatsappSelectedGroup(groupJid) {
+  const normalizedJid = normalizeWhatsappGroupJid(groupJid);
+  if (!normalizedJid) {
+    throw new Error('Grup bilgisi geçersiz.');
+  }
+
+  const result = db.prepare('DELETE FROM whatsapp_selected_groups WHERE group_jid = ?').run(normalizedJid);
+  return result.changes > 0;
+}
+
+function getWhatsappEquipmentReminderRules() {
+  return db.prepare(`
+    SELECT id, title, item_name, delay_minutes, message_template, is_enabled, created_at, updated_at
+    FROM whatsapp_equipment_reminder_rules
+    ORDER BY is_enabled DESC, item_name COLLATE NOCASE ASC
+  `).all().map(normalizeWhatsappEquipmentReminderRule);
+}
+
+function upsertWhatsappEquipmentReminderRule(rule) {
+  const itemName = String(rule && (rule.item_name || rule.itemName || '')).trim();
+  if (!itemName) {
+    throw new Error('Eşya adı gerekli.');
+  }
+
+  const title = String(rule && rule.title || '').trim();
+  const delayMinutes = Math.max(0, parseInt(rule && (rule.delay_minutes ?? rule.delayMinutes), 10) || 0);
+  const defaultTemplate = '{{given_to}} için teslim edilen {{item_name}} eşyanın üzerinden {{delay_minutes}} dakika geçti. Lütfen kontrol edin. Oda: {{room_number}}.';
+  const messageTemplate = String(rule && (rule.message_template || rule.messageTemplate) || defaultTemplate).trim() || defaultTemplate;
+  const enabledValue = rule && Object.prototype.hasOwnProperty.call(rule, 'is_enabled')
+    ? rule.is_enabled
+    : rule && Object.prototype.hasOwnProperty.call(rule, 'isEnabled')
+      ? rule.isEnabled
+      : 0;
+  const isEnabled = enabledValue === true || enabledValue === 1 || enabledValue === '1' || enabledValue === 'true' || enabledValue === 'on' ? 1 : 0;
+
+  db.prepare(`
+    INSERT INTO whatsapp_equipment_reminder_rules (item_name, title, delay_minutes, message_template, is_enabled, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    ON CONFLICT(item_name) DO UPDATE SET
+      title = excluded.title,
+      delay_minutes = excluded.delay_minutes,
+      message_template = excluded.message_template,
+      is_enabled = excluded.is_enabled,
+      updated_at = CURRENT_TIMESTAMP
+  `).run(itemName, title, delayMinutes, messageTemplate, isEnabled);
+
+  return db.prepare(`
+    SELECT id, title, item_name, delay_minutes, message_template, is_enabled, created_at, updated_at
+    FROM whatsapp_equipment_reminder_rules
+    WHERE item_name = ?
+    LIMIT 1
+  `).get(itemName);
+}
+
+function deleteWhatsappEquipmentReminderRule(itemName) {
+  const normalizedItemName = String(itemName || '').trim();
+  if (!normalizedItemName) {
+    throw new Error('Eşya adı gerekli.');
+  }
+
+  const result = db.prepare('DELETE FROM whatsapp_equipment_reminder_rules WHERE item_name = ?').run(normalizedItemName);
+  return result.changes > 0;
+}
+
+function upsertWhatsappEquipmentReminderDelivery(delivery) {
+  const sharedEquipmentId = Number(delivery && delivery.shared_equipment_id);
+  const ruleId = Number(delivery && delivery.rule_id);
+  const groupJid = String(delivery && delivery.group_jid || '').trim();
+  const message = String(delivery && delivery.message || '').trim();
+  const status = String(delivery && delivery.status || 'pending').trim();
+  const errorMessage = delivery && delivery.error_message ? String(delivery.error_message).trim() : null;
+
+  if (!sharedEquipmentId || !ruleId || !groupJid || !message) {
+    throw new Error('Hatırlatma teslim kaydı için eksik bilgi var.');
+  }
+
+  if (!['pending', 'sent', 'failed'].includes(status)) {
+    throw new Error('Hatırlatma teslim durumu geçersiz.');
+  }
+
+  const sentAt = status === 'sent' ? formatLocalTimestamp() : null;
+  const lastAttemptAt = formatLocalTimestamp();
+
+  db.prepare(`
+    INSERT INTO whatsapp_equipment_reminder_deliveries (
+      shared_equipment_id,
+      rule_id,
+      group_jid,
+      message,
+      status,
+      sent_at,
+      last_attempt_at,
+      error_message,
+      created_at,
+      updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    ON CONFLICT(shared_equipment_id, group_jid) DO UPDATE SET
+      rule_id = excluded.rule_id,
+      message = excluded.message,
+      status = excluded.status,
+      sent_at = excluded.sent_at,
+      last_attempt_at = excluded.last_attempt_at,
+      error_message = excluded.error_message,
+      updated_at = CURRENT_TIMESTAMP
+  `).run(sharedEquipmentId, ruleId, groupJid, message, status, sentAt, lastAttemptAt, errorMessage);
+
+  return db.prepare(`
+    SELECT *
+    FROM whatsapp_equipment_reminder_deliveries
+    WHERE shared_equipment_id = ? AND group_jid = ?
+    LIMIT 1
+  `).get(sharedEquipmentId, groupJid);
+}
+
+function getWhatsappDailyTemplates() {
+  return db.prepare(`
+    SELECT id, title, send_time, message_template, is_enabled, created_at, updated_at
+    FROM whatsapp_daily_templates
+    ORDER BY is_enabled DESC, send_time ASC, id ASC
+  `).all().map(normalizeWhatsappDailyTemplate);
+}
+
+function validateDailyTemplateTime(sendTime) {
+  return /^([01]\d|2[0-3]):([0-5]\d)$/.test(String(sendTime || '').trim());
+}
+
+function upsertWhatsappDailyTemplate(template) {
+  const id = Number(template && template.id ? template.id : 0);
+  const title = String(template && template.title || '').trim();
+  const sendTime = String(template && (template.send_time || template.sendTime) || '').trim();
+  const messageTemplate = String(template && (template.message_template || template.messageTemplate) || '').trim();
+  const isEnabledValue = template && Object.prototype.hasOwnProperty.call(template, 'is_enabled')
+    ? template.is_enabled
+    : template && Object.prototype.hasOwnProperty.call(template, 'isEnabled')
+      ? template.isEnabled
+      : 0;
+  const isEnabled = isEnabledValue === true || isEnabledValue === 1 || isEnabledValue === '1' || isEnabledValue === 'true' || isEnabledValue === 'on' ? 1 : 0;
+
+  if (!title) {
+    throw new Error('Günlük şablon başlığı gerekli.');
+  }
+  if (!validateDailyTemplateTime(sendTime)) {
+    throw new Error('Saat formatı HH:MM olmalıdır.');
+  }
+  if (!messageTemplate) {
+    throw new Error('Günlük şablon mesajı gerekli.');
+  }
+
+  if (id > 0) {
+    db.prepare(`
+      UPDATE whatsapp_daily_templates
+      SET title = ?,
+          send_time = ?,
+          message_template = ?,
+          is_enabled = ?,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(title, sendTime, messageTemplate, isEnabled, id);
+  } else {
+    db.prepare(`
+      INSERT INTO whatsapp_daily_templates (title, send_time, message_template, is_enabled, created_at, updated_at)
+      VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    `).run(title, sendTime, messageTemplate, isEnabled);
+  }
+
+  const targetId = id > 0
+    ? id
+    : Number(db.prepare('SELECT last_insert_rowid() AS id').get().id || 0);
+
+  return db.prepare(`
+    SELECT id, title, send_time, message_template, is_enabled, created_at, updated_at
+    FROM whatsapp_daily_templates
+    WHERE id = ?
+    LIMIT 1
+  `).get(targetId);
+}
+
+function deleteWhatsappDailyTemplate(templateId) {
+  const id = Number(templateId || 0);
+  if (!id) {
+    throw new Error('Silinecek şablon bilgisi geçersiz.');
+  }
+
+  const result = db.prepare('DELETE FROM whatsapp_daily_templates WHERE id = ?').run(id);
+  return result.changes > 0;
+}
+
+function upsertWhatsappDailyTemplateDelivery(delivery) {
+  const templateId = Number(delivery && delivery.template_id);
+  const groupJid = String(delivery && delivery.group_jid || '').trim();
+  const sendDate = String(delivery && delivery.send_date || '').trim();
+  const message = String(delivery && delivery.message || '').trim();
+  const status = String(delivery && delivery.status || 'pending').trim();
+  const errorMessage = delivery && delivery.error_message ? String(delivery.error_message).trim() : null;
+
+  if (!templateId || !groupJid || !sendDate || !message) {
+    throw new Error('Günlük şablon teslim kaydı için eksik bilgi var.');
+  }
+  if (!['pending', 'sent', 'failed'].includes(status)) {
+    throw new Error('Günlük şablon teslim durumu geçersiz.');
+  }
+
+  const sentAt = status === 'sent' ? formatLocalTimestamp() : null;
+  const lastAttemptAt = formatLocalTimestamp();
+
+  db.prepare(`
+    INSERT INTO whatsapp_daily_template_deliveries (
+      template_id,
+      group_jid,
+      send_date,
+      message,
+      status,
+      sent_at,
+      last_attempt_at,
+      error_message,
+      created_at,
+      updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    ON CONFLICT(template_id, group_jid, send_date) DO UPDATE SET
+      message = excluded.message,
+      status = excluded.status,
+      sent_at = excluded.sent_at,
+      last_attempt_at = excluded.last_attempt_at,
+      error_message = excluded.error_message,
+      updated_at = CURRENT_TIMESTAMP
+  `).run(templateId, groupJid, sendDate, message, status, sentAt, lastAttemptAt, errorMessage);
+
+  return db.prepare(`
+    SELECT *
+    FROM whatsapp_daily_template_deliveries
+    WHERE template_id = ? AND group_jid = ? AND send_date = ?
+    LIMIT 1
+  `).get(templateId, groupJid, sendDate);
+}
+
 module.exports = {
   db,
   initDatabase,
@@ -907,5 +1407,17 @@ module.exports = {
   syncRoomKeyStock,
   recordRoomEntry,
   recordRoomExit,
-  formatLocalTimestamp
+  formatLocalTimestamp,
+  getWhatsappSelectedGroups,
+  getWhatsappEquipmentReminderRules,
+  getWhatsappDailyTemplates,
+  upsertWhatsappSelectedGroup,
+  upsertWhatsappEquipmentReminderRule,
+  upsertWhatsappEquipmentReminderDelivery,
+  upsertWhatsappDailyTemplate,
+  upsertWhatsappDailyTemplateDelivery,
+  deleteWhatsappEquipmentReminderRule,
+  deleteWhatsappDailyTemplate,
+  removeWhatsappSelectedGroup,
+  normalizeWhatsappGroupJid
 };
