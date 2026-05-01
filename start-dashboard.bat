@@ -50,29 +50,27 @@ if "%ERRORLEVEL%"=="1" (
 )
 
 :docker_ready
-for /L %%p in (%APP_PORT%,1,3100) do (
-    powershell -NoProfile -Command "if (Get-NetTCPConnection -LocalPort %%p -State Listen -ErrorAction SilentlyContinue) { exit 1 } else { exit 0 }"
-    if !ERRORLEVEL! equ 0 (
-        set "APP_PORT=%%p"
-        goto port_ready
+echo [*] Checking port 3000...
+powershell -NoProfile -Command "if (Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue) { exit 1 } else { exit 0 }"
+if !ERRORLEVEL! equ 1 (
+    echo [*] Port 3000 is in use, freeing it...
+    for /f "tokens=5" %%a in ('netstat -ano ^| find ":3000"') do (
+        taskkill /PID %%a /F >NUL 2>&1
+        echo [OK] Process killed on port 3000
     )
+    timeout /t 2 /nobreak >NUL
 )
-
-echo [ERROR] 3000-3100 araliginda bos port bulunamadi.
-pause
-exit /b 1
 
 :port_ready
-if not "!APP_PORT!"=="!REQUESTED_PORT!" (
-    echo [*] 3000 portu dolu oldugu icin !APP_PORT! portu kullanilacak.
-)
+echo [*] Using fixed port 3000
 
 echo.
 echo [*] Starting application...
 echo.
 
 cd /d "%~dp0"
-set "PORT=!APP_PORT!"
+set "PORT=3000"
+set "APP_PORT=3000"
 docker compose up -d
 if not "%ERRORLEVEL%"=="0" (
     echo [ERROR] docker compose up failed.
