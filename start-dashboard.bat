@@ -153,6 +153,28 @@ docker compose logs --tail 50
 pause & exit /b 1
 
 :app_ok
+
+REM -----------------------------------------------
+REM Baglanti bilgilerini baglan.txt'ye yaz
+REM -----------------------------------------------
+for /f "usebackq" %%i in (`powershell -NoProfile -Command "Get-Date -Format 'dd.MM.yyyy HH:mm:ss'"`) do set "STARTED_AT=%%i"
+
+set "TXT=%~dp0baglan.txt"
+(
+    echo ===============================================
+    echo   LOJMAN DASHBOARD - BAGLANTI BILGILERI
+    echo ===============================================
+    echo.
+    echo   Son baslatma : !STARTED_AT!
+    echo.
+    echo   Bilgisayardan : http://localhost:3000
+    echo   Telefondan    : http://!LOCAL_IP!:3000
+    echo.
+    echo   Telefon ve bilgisayar ayni Wi-Fi'da olmali.
+    echo.
+    echo ===============================================
+) > "!TXT!"
+
 echo.
 echo ===============================================
 echo   LOJMAN DASHBOARD CALISIYOR
@@ -163,6 +185,7 @@ echo   Telefondan    : http://!LOCAL_IP!:3000
 echo.
 echo   (Telefon ve bilgisayar ayni Wi-Fi'da olmali)
 echo.
+echo   Baglanti bilgileri kaydedildi: baglan.txt
 echo ===============================================
 echo.
 timeout /t 1 /nobreak >nul
