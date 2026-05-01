@@ -1,98 +1,91 @@
 @echo off
-REM Lojman Dashboard - Auto-Elevate Start Script
 setlocal enabledelayedexpansion
 
 :: ===============================================
-:: 1. OTOMATİK YÖNETİCİ YETKİSİ ALMA
+:: 1. OTOMATIK YONETICI YETKISI ALMA
 :: ===============================================
-:check_Permissions
-    net session >nul 2>&1
-    if %errorLevel% == 0 (
-        goto :admin_confirmed
-    ) else (
-        echo [*] Yetki yukseltiliyor... Lutfen cikan uyarida 'Evet'e tiklayin.
-        powershell -Command "Start-Process -FilePath '%0' -Verb RunAs"
-        exit /b
-    )
+net session >nul 2>&1
+if %errorLevel% neq 0 (
+    echo [*] Yonetici yetkisi aliniyor...
+    powershell -Command "Start-Process -FilePath '%0' -Verb RunAs"
+    exit /b
+)
 
-:admin_confirmed
+:: ===============================================
+:: 2. DIZIN VE AYARLAR
+:: ===============================================
 cls
-echo.
-echo ===============================================
-echo   LOJMAN DASHBOARD - YONETICI MODUNDA CALISIYOR
-echo ===============================================
-echo.
-
-:: Değişkenler ve Konum
-set "APP_PORT=3000"
+title Lojman Dashboard Starter
 cd /d "%~dp0"
+echo ===============================================
+echo   LOJMAN DASHBOARD - GUVENLI BASLATICI
+echo ===============================================
+echo.
 
 :: ===============================================
-:: 2. DOCKER KONTROLÜ
+:: 3. DOCKER CALISIYOR MU KONTROL ET
 :: ===============================================
+echo [*] Docker kontrol ediliyor...
 docker ps >nul 2>&1
 if %errorLevel% neq 0 (
-    echo [*] Docker Desktop calismiyor, baslatiliyor...
+    echo [!] Docker calismiyor. Baslatilmaya calisiliyor...
     
     if exist "C:\Program Files\Docker\Docker\Docker Desktop.exe" (
         start "" "C:\Program Files\Docker\Docker\Docker Desktop.exe"
-    ) else if exist "C:\Program Files (x86)\Docker\Docker\Docker Desktop.exe" (
-        start "" "C:\Program Files (x86)\Docker\Docker\Docker Desktop.exe"
     ) else (
-        echo [HATA] Docker Desktop bulunamadi. Lutfen manuel olarak acin.
+        echo [HATA] Docker Desktop bulunamadi. Lutfen manuel acin.
         pause
         exit /b 1
     )
 
-    echo [*] Docker'in hazir olmasi bekleniyor (bu biraz surebilir)...
-    :wait_docker
-    timeout /t 3 /nobreak >nul
+    echo [*] Docker'in hazir olmasi bekleniyor...
+    :docker_wait
+    timeout /t 5 /nobreak >nul
     docker ps >nul 2>&1
-    if %errorLevel% neq 0 goto :wait_docker
-    echo [OK] Docker hazir!
+    if %errorLevel% neq 0 goto docker_wait
+    echo [OK] Docker artik hazir.
 )
 
 :: ===============================================
-:: 3. PORT TEMİZLİĞİ
+:: 4. PORT 3000 TEMIZLIGI
 :: ===============================================
-echo [*] Port %APP_PORT% kontrol ediliyor...
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr :%APP_PORT% ^| findstr LISTENING') do (
-    echo [!] Port %APP_PORT% dolu. PID %%a sonlandiriliyor...
+echo [*] Port 3000 kontrol ediliyor...
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr :3000 ^| findstr LISTENING') do (
+    echo [!] Port 3000 dolu (PID: %%a). Kapatiliyor...
     taskkill /PID %%a /F >nul 2>&1
-    timeout /t 1 /nobreak >nul
 )
 
 :: ===============================================
-:: 4. UYGULAMAYI BAŞLATMA
+:: 5. DOCKER COMPOSE CALISTIRMA
 :: ===============================================
-if not exist "docker-compose.yml" (
-    echo [HATA] docker-compose.yml dosyasi bulunamadi!
-    echo Bulundugunuz konum: %cd%
+if not exist "docker-compose.yml" if not exist "docker-compose.yaml" (
+    echo [HATA] Bu klasorde docker-compose.yml dosyasi yok!
+    echo Mevcut konum: %cd%
     pause
     exit /b 1
 )
 
-echo [*] Konteynerler baslatiliyor...
+echo [*] Konteynerler ayaga kaldiriliyor (docker compose up)...
 docker compose up -d
 if %errorLevel% neq 0 (
-    echo [HATA] Baslatma sirasinda bir sorun olustu.
-    docker compose logs --tail 20
+    echo.
+    echo [HATA] Docker baslatilamadi! Hata detaylari yukaridadir.
+    echo.
     pause
     exit /b 1
 )
 
 :: ===============================================
-:: 5. SAĞLIK KONTROLÜ VE TARAYICI
+:: 6. UYGULAMA KONTROL VE ACILIS
 :: ===============================================
-echo [*] Uygulama hazirlaniyor...
-timeout /t 5 /nobreak >nul
+echo [*] Uygulama hazirlaniyor (10 saniye bekleniyor)...
+timeout /t 10 /nobreak >nul
 
-echo [OK] Uygulama aciliyor: http://localhost:%APP_PORT%
-start "" "http://localhost:%APP_PORT%"
+echo [OK] Tarayici aciliyor: http://localhost:3000
+start "" "http://localhost:3000"
 
 echo.
 echo ===============================================
-echo   HER SEY HAZIR! IYI CALISMALAR.
+echo   ISLEM TAMAMLANDI. BU PENCEREYI KAPATABILIRSINIZ.
 echo ===============================================
-timeout /t 5 >nul
-exit /b 0
+pause
