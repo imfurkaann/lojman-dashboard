@@ -1,8 +1,6 @@
 @echo off
-REM Lojman Dashboard Backup Script
-REM Hem database hem de görselleri aynı klasöre yedekler
-
 setlocal enabledelayedexpansion
+chcp 65001 >nul 2>&1
 
 cls
 echo.
@@ -11,55 +9,91 @@ echo   LOJMAN DASHBOARD - BACKUP
 echo ===============================================
 echo.
 
-REM Tarih ve saat ile klasör adı oluştur (YYYY-MM-DD_HH-MM-SS)
-for /f "tokens=2-4 delims=/ " %%a in ('date /t') do (set mydate=%%c-%%a-%%b)
-for /f "tokens=1-2 delims=/:" %%a in ('time /t') do (set mytime=%%a-%%b)
-set "BACKUP_DIR=backup_%mydate%_%mytime%"
+REM -----------------------------------------------
+REM Tarih/Saat - PowerShell ile güvenli al
+REM -----------------------------------------------
+for /f "usebackq" %%i in (`powershell -NoProfile -Command "Get-Date -Format 'yyyy-MM-dd_HH-mm-ss'"`) do set "TIMESTAMP=%%i"
+set "BACKUP_DIR=backup_%TIMESTAMP%"
 
-echo [*] Backup klasörü oluşturuluyor: %BACKUP_DIR%
-mkdir "%BACKUP_DIR%"
-
+echo [1/5] Backup klasoru olusturuluyor: %BACKUP_DIR%
+mkdir "%BACKUP_DIR%" 2>nul
 if not exist "%BACKUP_DIR%" (
-    echo [ERROR] Klasör oluşturulamadı!
-    pause
-    exit /b 1
+    echo [HATA] Klasor olusturulamadi!
+    pause & exit /b 1
 )
+echo [OK] Klasor hazir.
 
+REM -----------------------------------------------
+REM Container çalışıyor mu?
+REM -----------------------------------------------
 echo.
-echo [*] Database yedekleniyor...
-docker compose exec -T app cat /data/lojman.db > "%BACKUP_DIR%\lojman.db" 2>NUL
-if %errorlevel% equ 0 (
-    echo [OK] Database yedeklendi: %BACKUP_DIR%\lojman.db
-) else (
-    echo [WARNING] Database yedeklenemedi - container çalışıyor mu?
+echo [2/5] Container kontrol ediliyor...
+docker inspect --format "{{.State.Running}}" lojman-dashboard 2>nul | findstr "true" >nul
+if errorlevel 1 (
+    echo [HATA] lojman-dashboard container'i calisiyor degil!
+    echo        Once start.bat ile uygulamayi baslatın.
+    rmdir "%BACKUP_DIR%" >nul 2>&1
+    pause & exit /b 1
 )
+echo [OK] Container calisiyor.
 
+REM -----------------------------------------------
+REM Database yedekle
+REM -----------------------------------------------
 echo.
-echo [*] Görseller yedekleniyor...
-docker compose cp lojman-dashboard:/app/public/uploads "%BACKUP_DIR%\uploads" 2>NUL
-if %errorlevel% equ 0 (
-    echo [OK] Görseller yedeklendi: %BACKUP_DIR%\uploads
+echo [3/5] Database yedekleniyor...
+docker cp lojman-dashboard:/data/lojman.db "%BACKUP_DIR%\lojman.db" 2>nul
+if errorlevel 1 (
+    REM Alternatif yol dene
+    docker cp lojman-dashboard:/app/lojman.db "%BACKUP_DIR%\lojman.db" 2>nul
+)
+if exist "%BACKUP_DIR%\lojman.db" (
+    echo [OK] Database yedeklendi.
 ) else (
-    echo [WARNING] Görseller yedeklenemedi
+    echo [UYARI] Database yedeklenemedi - container icindeki yolu kontrol edin.
 )
 
+REM -----------------------------------------------
+REM Görseller yedekle
+REM -----------------------------------------------
 echo.
-echo [*] WhatsApp verisi yedekleniyor...
-docker compose cp lojman-dashboard:/data/whatsapp-auth "%BACKUP_DIR%\whatsapp-auth" 2>NUL
-if %errorlevel% equ 0 (
-    echo [OK] WhatsApp verisi yedeklendi: %BACKUP_DIR%\whatsapp-auth
+echo [4/5] Gorseller yedekleniyor...
+docker cp lojman-dashboard:/app/public/uploads "%BACKUP_DIR%\uploads" 2>nul
+if errorlevel 1 (
+    echo [UYARI] Gorseller yedeklenemedi - /app/public/uploads yolu bulunamadi.
 ) else (
-    echo [WARNING] WhatsApp verisi yedeklenemedi
+    echo [OK] Gorseller yedeklendi.
 )
 
+REM -----------------------------------------------
+REM WhatsApp yedekle
+REM -----------------------------------------------
+echo.
+echo [5/5] WhatsApp verisi yedekleniyor...
+docker cp lojman-dashboard:/data/whatsapp-auth "%BACKUP_DIR%\whatsapp-auth" 2>nul
+if errorlevel 1 (
+    echo [UYARI] WhatsApp verisi yedeklenemedi - /data/whatsapp-auth yolu bulunamadi.
+) else (
+    echo [OK] WhatsApp verisi yedeklendi.
+)
+
+REM -----------------------------------------------
+REM Sonuç
+REM -----------------------------------------------
 echo.
 echo ===============================================
-echo [OK] BACKUP TAMAMLANDI
+echo   BACKUP TAMAMLANDI
 echo ===============================================
 echo.
-echo Klasör: %CD%\%BACKUP_DIR%
+echo Klasor : %CD%\%BACKUP_DIR%
 echo.
-echo İçerik:
-dir "%BACKUP_DIR%" /B
+echo Icerik:
+dir "%BACKUP_DIR%" /B /S
+echo.
+
+REM Toplam boyut
+for /f "tokens=3" %%a in ('dir "%BACKUP_DIR%" /S /-C ^| findstr /C:"bayt" /C:"bytes" ^| findstr /V "bos\|free\|0 "') do set "TOTAL_SIZE=%%a"
+echo Toplam boyut: %TOTAL_SIZE% byte
 echo.
 pause
+exit /b 0
