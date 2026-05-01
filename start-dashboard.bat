@@ -105,7 +105,12 @@ echo ===============================================
 echo [OK] LOJMAN DASHBOARD IS RUNNING
 echo ===============================================
 echo.
-echo Address: http://localhost:!APP_PORT!
+echo LOCAL ACCESS:
+echo   http://localhost:!APP_PORT!
+echo.
+echo NETWORK ACCESS (same WiFi):
+for /f "tokens=*" %%a in ('powershell -NoProfile -Command "try { [System.Net.Dns]::GetHostAddresses([System.Net.Dns]::GetHostName()) | Where-Object {$_.AddressFamily -eq 'InterNetwork'} | Select-Object -First 1 -ExpandProperty IPAddressToString } catch { Write-Output 'N/A' }"') do set "LOCAL_IP=%%a"
+echo   http://!LOCAL_IP!:!APP_PORT!
 echo.
 
 start "" "http://localhost:!APP_PORT!"

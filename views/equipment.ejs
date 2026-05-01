@@ -249,7 +249,7 @@ if (equipmentFilterForm && equipmentSearchInput) {
 }
 
 function setRoomFromName(name) {
-  const person = personnelData.find(p => (p.name || '').toLowerCase() === (name || '').toLowerCase());
+  const person = personnelData.find(p => (p.name || '').toLocaleLowerCase('tr-TR') === (name || '').toLocaleLowerCase('tr-TR'));
   const roomNumber = person && person.room_number ? String(person.room_number) : '';
   roomValue.value = roomNumber;
 }
@@ -269,14 +269,14 @@ function hideSuggestions() {
 }
 
 function renderSuggestions(query) {
-  const q = (query || '').trim().toLowerCase();
+  const q = (query || '').trim().toLocaleLowerCase('tr-TR');
   if (!q) {
     hideSuggestions();
     return;
   }
 
   const matches = personnelData
-    .filter(p => (p.name || '').toLowerCase().includes(q))
+    .filter(p => (p.name || '').toLocaleLowerCase('tr-TR').includes(q))
     .slice(0, 8);
 
   if (matches.length === 0) {

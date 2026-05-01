@@ -126,8 +126,24 @@ server.on('error', (error) => {
   throw error;
 });
 
-server.listen(PORT, () => {
-  console.log(`Lojman Dashboard çalışıyor: http://localhost:${PORT}`);
+server.listen(PORT, '0.0.0.0', () => {
+  const os = require('os');
+  const interfaces = os.networkInterfaces();
+  let localIP = 'localhost';
+  
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        localIP = iface.address;
+        break;
+      }
+    }
+    if (localIP !== 'localhost') break;
+  }
+  
+  console.log(`Lojman Dashboard çalışıyor:`);
+  console.log(`  Yerel: http://localhost:${PORT}`);
+  console.log(`  Ağ: http://${localIP}:${PORT}`);
 });
 
 module.exports = { app, io, server };

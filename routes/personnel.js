@@ -339,7 +339,7 @@ router.get('/', (req, res) => {
   const params = [];
 
   if (search) {
-    query += " AND (p.first_name LIKE ? OR p.last_name LIKE ? OR p.phone LIKE ?)";
+    query += " AND (LOWER(p.first_name) LIKE LOWER(?) OR LOWER(p.last_name) LIKE LOWER(?) OR p.phone LIKE ?)";
     params.push(`%${search}%`, `%${search}%`, `%${search}%`);
   }
   if (department) {
