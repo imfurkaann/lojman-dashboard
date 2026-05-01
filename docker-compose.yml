@@ -3,7 +3,7 @@ services:
     build: .
     container_name: lojman-dashboard
     ports:
-      - "0.0.0.0:${PORT:-3000}:3000"
+      - "0.0.0.0:3000:3000"
     environment:
       NODE_ENV: production
       PORT: 3000

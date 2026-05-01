@@ -9,9 +9,6 @@ echo   LOJMAN DASHBOARD - CALISMAYA HAZIRLANIYOR
 echo ===============================================
 echo.
 
-set "APP_PORT=%PORT%"
-if "%APP_PORT%"=="" set "APP_PORT=3000"
-
 REM Docker kontrolü
 if not exist "C:\Program Files\Docker\Docker\Docker Desktop.exe" (
     if not exist "C:\Program Files (x86)\Docker\Docker\Docker Desktop.exe" (
@@ -45,30 +42,27 @@ if "%ERRORLEVEL%"=="1" (
 )
 
 :docker_ready
-REM Port kontrol et
-for /L %%p in (%APP_PORT%,1,3100) do (
+REM Port 3000 kontrol et
+for /L %%p in (3000,1,3000) do (
     powershell -NoProfile -Command "if (Get-NetTCPConnection -LocalPort %%p -State Listen -ErrorAction SilentlyContinue) { exit 1 } else { exit 0 }" 2>NUL
-    if !ERRORLEVEL! equ 0 (
-        set "APP_PORT=%%p"
-        goto port_ready
+    if !ERRORLEVEL! equ 1 (
+        echo [*] Port 3000 kullaniliyorsa kil...
+        for /f "tokens=5" %%a in ('netstat -ano 2^>nul ^| findstr :3000') do (
+            taskkill /PID %%a /F >nul 2>&1
+        )
+        timeout /t 2 >nul
     )
 )
 
-echo [ERROR] 3000-3100 araliginda bos port yok.
-pause
-exit /b 1
-
 :port_ready
-if not "!APP_PORT!"=="3000" (
-    echo [*] Port 3000 dolu, !APP_PORT! kullanilacak.
-)
+echo [*] Port 3000 kullanilacak
 
 echo.
 echo [*] Uygulama baslatiliyor...
 echo.
 
 cd /d "%~dp0"
-set "PORT=!APP_PORT!"
+set "PORT=3000"
 docker compose up -d 
 if not "%ERRORLEVEL%"=="0" (
     echo [ERROR] docker compose başarısız.
@@ -81,7 +75,7 @@ echo [*] Uygulama baslandığı kontrol ediliyor (max 120 saniye)...
 set "max_wait=120"
 for /L %%i in (1,1,%max_wait%) do (
     timeout /t 1 /nobreak >NUL
-    powershell -NoProfile -Command "try { $r = Invoke-WebRequest -UseBasicParsing -Uri 'http://localhost:!APP_PORT!/' -TimeoutSec 3; if ($r.StatusCode -ge 200) { exit 0 } else { exit 1 } } catch { exit 1 }" 2>NUL
+    powershell -NoProfile -Command "try { $r = Invoke-WebRequest -UseBasicParsing -Uri 'http://localhost:3000/' -TimeoutSec 3; if ($r.StatusCode -ge 200) { exit 0 } else { exit 1 } } catch { exit 1 }" 2>NUL
     if !ERRORLEVEL! equ 0 (
         echo [OK] Uygulama hazir!
         goto app_ready
@@ -103,9 +97,9 @@ echo ===============================================
 echo [TAMAM] LOJMAN DASHBOARD ÇALIŞIYOR
 echo ===============================================
 echo.
-echo Adres: http://localhost:!APP_PORT!
+echo Adres: http://localhost:3000
 echo.
 
-start "" "http://localhost:!APP_PORT!"
+start "" "http://localhost:3000"
 timeout /t 2 /nobreak >NUL
 exit /b 0
