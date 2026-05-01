@@ -1,116 +1,117 @@
 @echo off
-REM Lojman Dashboard - Start Script
-REM Automatically starts Docker and application
-
+REM Lojman Dashboard - Optimize Edilmis Start Script
 setlocal enabledelayedexpansion
+
+:: ===============================================
+:: 1. YÖNETİCİ İZNİ KONTROLÜ
+:: ===============================================
+net session >nul 2>&1
+if %errorLevel% neq 0 (
+    echo [HATA] Lutfen bu dosyaya sag tiklayip "Yonetici Olarak Calistir" deyin.
+    pause
+    exit /b 1
+)
 
 cls
 echo.
 echo ===============================================
-echo   LOJMAN DASHBOARD - STARTING
+echo   LOJMAN DASHBOARD - BAŞLATILIYOR
 echo ===============================================
 echo.
 
-set "APP_PORT=%PORT%"
-if "%APP_PORT%"=="" set "APP_PORT=3000"
-set "REQUESTED_PORT=%APP_PORT%"
+:: Değişkenler
+set "APP_PORT=3000"
+cd /d "%~dp0"
 
-if not exist "C:\Program Files\Docker\Docker\Docker Desktop.exe" (
-    if not exist "C:\Program Files (x86)\Docker\Docker\Docker Desktop.exe" (
-        echo [ERROR] Docker Desktop not found!
-        echo Please download: https://www.docker.com/products/docker-desktop
-        echo.
+:: ===============================================
+:: 2. DOCKER KONTROLÜ
+:: ===============================================
+where docker >nul 2>&1
+if %errorLevel% neq 0 (
+    echo [HATA] Docker bulunamadi! Lutfen Docker Desktop'in kurulu oldugundan emin olun.
+    pause
+    exit /b 1
+)
+
+:: Docker Desktop'ın çalışıp çalışmadığını kontrol et
+docker ps >nul 2>&1
+if %errorLevel% neq 0 (
+    echo [*] Docker Desktop calismiyor, baslatiliyor...
+    
+    :: Docker Desktop yolunu otomatik bulmaya çalış
+    if exist "C:\Program Files\Docker\Docker\Docker Desktop.exe" (
+        start "" "C:\Program Files\Docker\Docker\Docker Desktop.exe"
+    ) else (
+        echo [HATA] Docker Desktop exe yolu bulunamadi. Lutfen Docker'i manuel acin.
         pause
         exit /b 1
     )
-)
 
-tasklist /FI "IMAGENAME eq Docker Desktop.exe" 2>NUL | find /I /N "Docker Desktop.exe">NUL
-if "%ERRORLEVEL%"=="1" (
-    echo [*] Starting Docker Desktop...
-    start "" "C:\Program Files\Docker\Docker\Docker Desktop.exe"
-    
-    echo [*] Please wait...
-    timeout /t 3 /nobreak >NUL
-    
-    for /L %%i in (1,1,60) do (
-        docker ps >NUL 2>&1
-        if !ERRORLEVEL! equ 0 (
-            echo [OK] Docker ready!
-            goto docker_ready
-        )
-        timeout /t 1 /nobreak >NUL
-    )
-    
-    echo [ERROR] Docker startup failed. Please start it manually.
-    pause
-    exit /b 1
+    echo [*] Docker'in hazir olmasi bekleniyor...
+    :wait_docker
+    timeout /t 3 /nobreak >nul
+    docker ps >nul 2>&1
+    if %errorLevel% neq 0 goto wait_docker
+    echo [OK] Docker hazir!
 ) else (
-    echo [OK] Docker is already running.
+    echo [OK] Docker zaten calisiyor.
 )
 
-:docker_ready
-echo [*] Checking port 3000...
-powershell -NoProfile -Command "if (Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue) { exit 1 } else { exit 0 }"
-if !ERRORLEVEL! equ 1 (
-    echo [*] Port 3000 is in use, freeing it...
-    for /f "tokens=5" %%a in ('netstat -ano ^| find ":3000"') do (
-        taskkill /PID %%a /F >NUL 2>&1
-        echo [OK] Process killed on port 3000
-    )
-    timeout /t 2 /nobreak >NUL
+:: ===============================================
+:: 3. PORT TEMİZLİĞİ (Port 3000)
+:: ===============================================
+echo [*] Port %APP_PORT% kontrol ediliyor...
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr :%APP_PORT% ^| findstr LISTENING') do (
+    echo [*] Port %APP_PORT% kullanimda (PID: %%a), serbest birakiliyor...
+    taskkill /PID %%a /F >nul 2>&1
+    timeout /t 2 /nobreak >nul
 )
 
-:port_ready
-echo [*] Using fixed port 3000
-
-echo.
-echo [*] Starting application...
-echo.
-
-cd /d "%~dp0"
-set "PORT=3000"
-set "APP_PORT=3000"
-docker compose up -d
-if not "%ERRORLEVEL%"=="0" (
-    echo [ERROR] docker compose up failed.
-    echo [INFO] Last container logs:
-    docker compose logs --tail 80
+:: ===============================================
+:: 4. DOCKER COMPOSE BAŞLATMA
+:: ===============================================
+if not exist "docker-compose.yml" if not exist "docker-compose.yaml" (
+    echo [HATA] docker-compose.yml dosyasi bu klasorde bulunamadi!
     pause
     exit /b 1
 )
 
-echo [*] Waiting for application to start...
-set "max_wait=30"
-for /L %%i in (1,1,%max_wait%) do (
-    timeout /t 1 /nobreak >NUL
-    powershell -NoProfile -Command "try { $r = Invoke-WebRequest -UseBasicParsing -Uri 'http://localhost:!APP_PORT!/dashboard' -TimeoutSec 2; if ($r.StatusCode -ge 200 -and $r.StatusCode -lt 500) { exit 0 } else { exit 1 } } catch { exit 1 }"
-    if !ERRORLEVEL! equ 0 (
-        echo [OK] Application ready!
-        goto app_ready
-    )
+echo [*] Konteynerler ayaga kaldiriliyor...
+docker compose up -d --build
+if %errorLevel% neq 0 (
+    echo [HATA] Docker Compose baslatilamadi.
+    docker compose logs --tail 20
+    pause
+    exit /b 1
 )
 
-echo [ERROR] Application did not become ready within %max_wait% seconds.
-echo [INFO] Last container logs:
-docker compose logs --tail 80
+:: ===============================================
+:: 5. UYGULAMA SAĞLIK KONTROLÜ
+:: ===============================================
+echo [*] Uygulamanin cevap vermesi bekleniyor...
+set "max_attempts=30"
+set "attempt=1"
+
+:check_app
+powershell -NoProfile -Command "try { $r = Invoke-WebRequest -Uri 'http://localhost:%APP_PORT%' -UseBasicParsing -TimeoutSec 2; if ($r.StatusCode -ge 200) { exit 0 } else { exit 1 } } catch { exit 1 }"
+if %errorLevel% equ 0 (
+    echo.
+    echo ===============================================
+    echo [OK] LOJMAN DASHBOARD BASARIYLA CALISTI
+    echo ===============================================
+    echo Erisim: http://localhost:%APP_PORT%
+    start "" "http://localhost:%APP_PORT%"
+    timeout /t 5 >nul
+    exit /b 0
+)
+
+if %attempt% leq %max_attempts% (
+    set /a attempt+=1
+    echo [*] Bekleniyor... (%attempt%/%max_attempts%)
+    timeout /t 2 /nobreak >nul
+    goto check_app
+)
+
+echo [HATA] Uygulama zaman aşımına ugradı. Loglar kontrol ediliyor...
+docker compose logs --tail 50
 pause
-exit /b 1
-
-:app_ready
-echo.
-echo ===============================================
-echo [OK] LOJMAN DASHBOARD IS RUNNING
-echo ===============================================
-echo.
-echo LOCAL ACCESS:
-echo   http://localhost:!APP_PORT!
-echo.
-echo NETWORK ACCESS (same WiFi):
-for /f "tokens=*" %%a in ('powershell -NoProfile -Command "try { [System.Net.Dns]::GetHostAddresses([System.Net.Dns]::GetHostName()) | Where-Object {$_.AddressFamily -eq 'InterNetwork'} | Select-Object -First 1 -ExpandProperty IPAddressToString } catch { Write-Output 'N/A' }"') do set "LOCAL_IP=%%a"
-echo   http://!LOCAL_IP!:!APP_PORT!
-echo.
-
-start "" "http://localhost:!APP_PORT!"
-timeout /t 2 /nobreak >NUL
-exit /b 0

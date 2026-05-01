@@ -32,7 +32,7 @@ RUN mkdir -p /data /app/public/uploads/personnel
 
 EXPOSE 3000
 
-HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=45s \
-  CMD curl -f http://localhost:3000/dashboard || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=90s \
+  CMD curl -f http://localhost:3000/ || exit 1
 
 CMD ["npm", "start"]
