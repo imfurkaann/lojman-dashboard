@@ -1,89 +1,111 @@
 @echo off
+REM Lojman Dashboard - Start Script (Temiz Versiyon)
 setlocal enabledelayedexpansion
 
-:: ===============================================
-:: 1. YÖNETİCİ YETKİSİ ALMA (GELİŞMİŞ YÖNTEM)
-:: ===============================================
-:init
-if "%PROCESSOR_ARCHITECTURE%" EQU "amd64" (
-   >nul 2>&1 "%SYSTEMROOT%\SysWOW64\cacls.exe" "%SYSTEMROOT%\SysWOW64\config\system"
-) else (
-   >nul 2>&1 "%SYSTEMROOT%\system32\cacls.exe" "%SYSTEMROOT%\system32\config\system"
-)
-
-if '%errorlevel%' NEQ '0' (
-    echo [*] Yonetici yetkisi isteniyor... Lutfen ekrana gelen uyariya EVET deyin.
-    goto getPrivileges
-) else ( goto gotPrivileges )
-
-:getPrivileges
-    if '%1'=='ELEV' (del "%temp%\getadmin.vbs" & exit /B)
-    echo Set UAC = CreateObject^("Shell.Application"^) > "%temp%\getadmin.vbs"
-    echo args = "" >> "%temp%\getadmin.vbs"
-    echo For Each strArg in WScript.Arguments >> "%temp%\getadmin.vbs"
-    echo args = args ^& " " ^& strArg >> "%temp%\getadmin.vbs"
-    echo Next >> "%temp%\getadmin.vbs"
-    echo UAC.ShellExecute "cmd.exe", "/c ""%~s0"" ELEV " ^& args, "", "runas", 1 >> "%temp%\getadmin.vbs"
-    "%temp%\getadmin.vbs" ELEV
-    exit /B
-
-:gotPrivileges
-    pushd "%cd%"
-    cd /d "%~dp0"
-
-:: ===============================================
-:: 2. ANA SCRIPT BAŞLANGICI
-:: ===============================================
 cls
-title Lojman Dashboard - Yonetici Modu
+echo.
 echo ===============================================
-echo   LOJMAN DASHBOARD - CALISMAYA HAZIR
+echo   LOJMAN DASHBOARD - CALISMAYA HAZIRLANIYOR
 echo ===============================================
 echo.
 
-:: Docker kontrolü
-docker ps >nul 2>&1
-if %errorLevel% neq 0 (
-    echo [*] Docker calismiyor, baslatiliyor...
-    if exist "C:\Program Files\Docker\Docker\Docker Desktop.exe" (
-        start "" "C:\Program Files\Docker\Docker\Docker Desktop.exe"
-    ) else (
-        echo [HATA] Docker Desktop bulunamadi. Manuel acmaniz gerekiyor.
-        pause & exit
+set "APP_PORT=%PORT%"
+if "%APP_PORT%"=="" set "APP_PORT=3000"
+
+REM Docker kontrolü
+if not exist "C:\Program Files\Docker\Docker\Docker Desktop.exe" (
+    if not exist "C:\Program Files (x86)\Docker\Docker\Docker Desktop.exe" (
+        echo [ERROR] Docker Desktop bulunamadi!
+        echo Indir: https://www.docker.com/products/docker-desktop
+        pause
+        exit /b 1
+    )
+)
+
+tasklist /FI "IMAGENAME eq Docker Desktop.exe" 2>NUL | find /I /N "Docker Desktop.exe">NUL
+if "%ERRORLEVEL%"=="1" (
+    echo [*] Docker Desktop baslatiliyor...
+    start "" "C:\Program Files\Docker\Docker\Docker Desktop.exe"
+    echo [*] 60 saniye bekleniyor...
+    
+    for /L %%i in (1,1,60) do (
+        docker ps >NUL 2>&1
+        if !ERRORLEVEL! equ 0 (
+            echo [OK] Docker hazir!
+            goto docker_ready
+        )
+        timeout /t 1 /nobreak >NUL
     )
     
-    echo [*] Docker hazir olana kadar bekleniyor...
-    :wait_docker
-    timeout /t 5 /nobreak >nul
-    docker ps >nul 2>&1
-    if %errorLevel% neq 0 goto wait_docker
+    echo [ERROR] Docker baslatılamadı. Manuel olarak başlatın.
+    pause
+    exit /b 1
+) else (
+    echo [OK] Docker zaten çalışıyor.
 )
 
-:: Port 3000 temizliği
-echo [*] Port 3000 temizleniyor...
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr :3000 ^| findstr LISTENING') do (
-    taskkill /PID %%a /F >nul 2>&1
+:docker_ready
+REM Port kontrol et
+for /L %%p in (%APP_PORT%,1,3100) do (
+    powershell -NoProfile -Command "if (Get-NetTCPConnection -LocalPort %%p -State Listen -ErrorAction SilentlyContinue) { exit 1 } else { exit 0 }" 2>NUL
+    if !ERRORLEVEL! equ 0 (
+        set "APP_PORT=%%p"
+        goto port_ready
+    )
 )
 
-:: Docker Compose
-if not exist "docker-compose.yml" (
-    echo [HATA] docker-compose.yml bulunamadi!
-    echo Konum: %cd%
-    pause & exit
-)
+echo [ERROR] 3000-3100 araliginda bos port yok.
+pause
+exit /b 1
 
-echo [*] Uygulama ayaga kaldiriliyor...
-docker compose up -d
-if %errorLevel% neq 0 (
-    echo [HATA] Bir seyler ters gitti.
-    docker compose logs --tail 20
-    pause & exit
+:port_ready
+if not "!APP_PORT!"=="3000" (
+    echo [*] Port 3000 dolu, !APP_PORT! kullanilacak.
 )
-
-echo [*] Uygulama aciliyor...
-timeout /t 5 >nul
-start "" "http://localhost:3000"
 
 echo.
-echo [TAMAM] Her sey yolunda. Pencereyi kapatabilirsiniz.
+echo [*] Uygulama baslatiliyor...
+echo.
+
+cd /d "%~dp0"
+set "PORT=!APP_PORT!"
+docker compose up -d 
+if not "%ERRORLEVEL%"=="0" (
+    echo [ERROR] docker compose başarısız.
+    docker compose logs --tail 50
+    pause
+    exit /b 1
+)
+
+echo [*] Uygulama baslandığı kontrol ediliyor (max 120 saniye)...
+set "max_wait=120"
+for /L %%i in (1,1,%max_wait%) do (
+    timeout /t 1 /nobreak >NUL
+    powershell -NoProfile -Command "try { $r = Invoke-WebRequest -UseBasicParsing -Uri 'http://localhost:!APP_PORT!/' -TimeoutSec 3; if ($r.StatusCode -ge 200) { exit 0 } else { exit 1 } } catch { exit 1 }" 2>NUL
+    if !ERRORLEVEL! equ 0 (
+        echo [OK] Uygulama hazir!
+        goto app_ready
+    )
+    if %%i equ 10 echo [*] Bekleniyor... (%%i/!max_wait!)
+    if %%i equ 30 echo [*] Bekleniyor... (%%i/!max_wait!)
+    if %%i equ 60 echo [*] Bekleniyor... (%%i/!max_wait!)
+    if %%i equ 90 echo [*] Bekleniyor... (%%i/!max_wait!)
+)
+
+echo [ERROR] Uygulama baslamadi (120 saniye timeout).
+docker compose logs --tail 50
 pause
+exit /b 1
+
+:app_ready
+echo.
+echo ===============================================
+echo [TAMAM] LOJMAN DASHBOARD ÇALIŞIYOR
+echo ===============================================
+echo.
+echo Adres: http://localhost:!APP_PORT!
+echo.
+
+start "" "http://localhost:!APP_PORT!"
+timeout /t 2 /nobreak >NUL
+exit /b 0
