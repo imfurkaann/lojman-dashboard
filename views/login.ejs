@@ -1,0 +1,22 @@
+<%- include('layout', { title: 'Giriş' }) %>
+<main class="container" style="max-width:480px;margin:40px auto;">
+  <h2>Giriş Yap</h2>
+
+  <% if (typeof error !== 'undefined' && error) { %>
+    <div style="color: #b00020; margin-bottom:12px;"><%= error %></div>
+  <% } %>
+
+  <form method="post" action="/login">
+    <div style="margin-bottom:8px;">
+      <label for="username">Kullanıcı adı</label>
+      <input id="username" name="username" type="text" required class="form-control" />
+    </div>
+    <div style="margin-bottom:8px;">
+      <label for="password">Şifre</label>
+      <input id="password" name="password" type="password" required class="form-control" />
+    </div>
+    <div>
+      <button type="submit" class="btn btn-primary">Giriş</button>
+    </div>
+  </form>
+</main>

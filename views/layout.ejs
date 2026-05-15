@@ -51,6 +51,13 @@
             <i class="bi bi-arrow-left-right"></i> Giriş/Çıkış
           </a>
         </li>
+        <% if (user && user.role === 'admin') { %>
+        <li class="nav-item">
+          <a class="nav-link text-white <%= currentPath.startsWith('/users') ? 'active' : '' %>" href="/users">
+            <i class="bi bi-people-fill"></i> Personel Yönetimi
+          </a>
+        </li>
+        <% } %>
         <li class="nav-item">
           <a class="nav-link text-white <%= currentPath.startsWith('/rapor-olustur') ? 'active' : '' %>" href="/rapor-olustur">
             <i class="bi bi-file-earmark-text"></i> Rapor Oluştur
@@ -64,7 +71,24 @@
 
       </ul>
       <div class="sidebar-footer p-3 mt-auto">
-        <div class="text-white-50 small">
+        <div class="d-flex align-items-center justify-content-between">
+          <div class="text-white">
+            <% if (user && user.username) { %>
+              <div class="small">Hoşgeldiniz</div>
+              <div class="fw-bold"><%= user.fullName || user.username %></div>
+            <% } else { %>
+              <div class="small">Giriş yapılmadı</div>
+            <% } %>
+          </div>
+          <div>
+            <% if (user && user.username) { %>
+              <a href="/logout" class="btn btn-sm btn-light">Çıkış</a>
+            <% } else { %>
+              <a href="/login" class="btn btn-sm btn-light">Giriş</a>
+            <% } %>
+          </div>
+        </div>
+        <div class="text-white-50 small mt-2">
           <i class="bi bi-building"></i> Lojman Yönetim v1.0
         </div>
       </div>

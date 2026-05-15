@@ -1489,12 +1489,14 @@ router.post('/:id/cikis', (req, res) => {
 // Personel sil
 router.post('/:id/sil', (req, res) => {
   try {
+    console.log(`[PERSONNEL] delete requested: personId=${req.params.id}, sessionUserId=${req.session && req.session.user ? req.session.user.id : 'none'}`);
     const person = db.prepare('SELECT id, first_name, last_name, room_id, photo_path FROM personnel WHERE id = ?').get(req.params.id);
     if (!person) return res.redirect('/personel');
 
     // Güvenlik: Aktif personel yanlışlıkla silinmesin. Önce çıkış yaptırılmalı.
     const statusRow = db.prepare('SELECT status FROM personnel WHERE id = ?').get(req.params.id);
     if (statusRow && statusRow.status === 'aktif') {
+      console.log(`[PERSONNEL] delete aborted (aktif): personId=${req.params.id}`);
       return res.redirect(`/personel/${req.params.id}`);
     }
 
@@ -1514,6 +1516,8 @@ router.post('/:id/sil', (req, res) => {
     });
 
     deletePersonnelTx(personelId);
+
+    console.log(`[PERSONNEL] deleted: personId=${personelId}, by=${safeUserId}`);
 
     if (person.photo_path) {
       const photoPath = getPhotoFileSystemPath(person.photo_path);

@@ -2,8 +2,17 @@ const express = require('express');
 const path = require('path');
 const http = require('http');
 const socketIo = require('socket.io');
-const { initDatabase } = require('./database');
+const { initDatabase, db } = require('./database');
 const whatsappService = require('./services/whatsapp-service');
+const session = require('express-session');
+const SQLiteStore = require('connect-sqlite3')(session);
+const bcrypt = require('bcryptjs');
+const fs = require('fs');
+
+function normalizeStr(v) {
+  if (typeof v !== 'string') return v;
+  try { return v.normalize('NFC'); } catch (e) { return v; }
+}
 
 const app = express();
 const server = http.createServer(app);
@@ -46,6 +55,59 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Ensure at least one admin user exists in DB (ENV: ADMIN_USER, ADMIN_PASS)
+(function ensureDefaultAdminInDb() {
+  try {
+    const row = db.prepare('SELECT COUNT(*) as count FROM users').get();
+    const count = row ? Number(row.count || 0) : 0;
+    if (count === 0) {
+      const username = normalizeStr(process.env.ADMIN_USER || 'admin');
+      const password = normalizeStr(process.env.ADMIN_PASS || 'admin');
+      const hash = bcrypt.hashSync(password, 10);
+      db.prepare('INSERT INTO users (username, password, full_name, role, created_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)').run(username, hash, 'Admin', 'admin');
+      console.log('[AUTH] Varsayılan admin oluşturuldu (DB):', username);
+    }
+  } catch (e) {
+    console.error('Default admin creation failed:', e.message);
+  }
+})();
+
+// Session middleware
+// Use SQLite-backed session store so sessions survive server restarts
+app.use(session({
+  store: new SQLiteStore({
+    db: 'sessions.sqlite',
+    dir: path.join(__dirname, 'data'),
+    concurrentDB: true
+  }),
+  secret: process.env.SESSION_SECRET || 'change_this_secret',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { maxAge: 24 * 60 * 60 * 1000 }
+}));
+
+// Authentication helpers
+function findUserByUsername(username) {
+  const norm = normalizeStr(String(username || ''));
+  try {
+    return db.prepare('SELECT id, username, password as passwordHash, full_name as fullName, role FROM users WHERE username = ? COLLATE NOCASE OR username = ?').get(norm, String(username || ''));
+  } catch (e) {
+    return null;
+  }
+}
+
+function requireAuth(req, res, next) {
+  if (req.session && req.session.user) return next();
+  // Save original url to return after login
+  req.session.returnTo = req.originalUrl || req.url;
+  return res.redirect('/login');
+}
+
+function requireAdmin(req, res, next) {
+  if (req.session && req.session.user && req.session.user.role === 'admin') return next();
+  res.status(403).render('403', { message: 'Erişim reddedildi' });
+}
+
 // io'yu app.locals'a kaydet
 app.locals.io = io;
 
@@ -76,7 +138,7 @@ app.use((req, res, next) => {
 
 // Global template değişkenleri
 app.use((req, res, next) => {
-  res.locals.user = {
+  res.locals.user = req.session && req.session.user ? req.session.user : {
     id: null,
     username: 'system',
     fullName: 'Sistem',
@@ -86,24 +148,69 @@ app.use((req, res, next) => {
   next();
 });
 
-// Route'lar
-// Application routes (no authentication)
-app.use('/dashboard', require('./routes/dashboard'));
-app.use('/odalar', require('./routes/rooms'));
-app.use('/personel', require('./routes/personnel'));
-app.use('/giris-cikis', require('./routes/entries'));
-app.use('/rapor-olustur', require('./routes/reports'));
-app.use('/gecmis', require('./routes/history'));
-app.use('/notlar', require('./routes/notes'));
-app.use('/esya-takip', require('./routes/equipment'));
-app.use('/ziyaretciler', require('./routes/visitors'));
-app.use('/yangin-alarm', require('./routes/alarms'));
+// Login routes
+app.get('/login', (req, res) => {
+  res.render('login', { error: null });
+});
+
+app.post('/login', (req, res) => {
+  const { username, password } = req.body || {};
+  const normUsername = normalizeStr(String(username || ''));
+  const normPassword = normalizeStr(String(password || ''));
+
+  const user = findUserByUsername(normUsername);
+  if (!user) {
+    return res.render('login', { error: 'Geçersiz kullanıcı adı veya şifre' });
+  }
+
+  // Backwards-compatible password check: try normalized password first, then raw password
+  let ok = false;
+  try {
+    ok = bcrypt.compareSync(normPassword, String(user.passwordHash || ''));
+  } catch (_) { ok = false; }
+  if (!ok) {
+    try {
+      ok = bcrypt.compareSync(String(password || ''), String(user.passwordHash || ''));
+    } catch (_) { ok = ok || false; }
+  }
+  if (!ok) {
+    return res.render('login', { error: 'Geçersiz kullanıcı adı veya şifre' });
+  }
+
+  req.session.user = { id: user.id, username: user.username, fullName: user.fullName || user.username, role: user.role || 'user' };
+  const redirectTo = req.session.returnTo || '/dashboard';
+  delete req.session.returnTo;
+  return res.redirect(redirectTo);
+});
+
+app.get('/logout', (req, res) => {
+  req.session.destroy(() => {
+    res.clearCookie('connect.sid');
+    res.redirect('/login');
+  });
+});
+
+// Route'lar (kimlik doğrulama gerektirir)
+app.use('/dashboard', requireAuth, require('./routes/dashboard'));
+app.use('/odalar', requireAuth, require('./routes/rooms'));
+app.use('/personel', requireAuth, require('./routes/personnel'));
+app.use('/giris-cikis', requireAuth, require('./routes/entries'));
+app.use('/rapor-olustur', requireAuth, require('./routes/reports'));
+app.use('/gecmis', requireAuth, require('./routes/history'));
+app.use('/notlar', requireAuth, require('./routes/notes'));
+app.use('/esya-takip', requireAuth, require('./routes/equipment'));
+app.use('/ziyaretciler', requireAuth, require('./routes/visitors'));
+app.use('/yangin-alarm', requireAuth, require('./routes/alarms'));
+// WhatsApp API endpoints can remain public for callbacks if necessary
 app.use('/whatsapp', require('./routes/whatsapp'));
 
-// Legacy auth URL compatibility
-app.get('/giris', (req, res) => res.redirect('/dashboard'));
-app.post('/giris', (req, res) => res.redirect('/dashboard'));
-app.get('/cikis', (req, res) => res.redirect('/dashboard'));
+// Admin-only user management
+app.use('/users', requireAuth, requireAdmin, require('./routes/user-management'));
+
+// Legacy auth URL compatibility -> redirect to new routes
+app.get('/giris', (req, res) => res.redirect('/login'));
+app.post('/giris', (req, res) => res.redirect('/login'));
+app.get('/cikis', (req, res) => res.redirect('/logout'));
 
 // Ana sayfa yönlendirmesi
 app.get('/', (req, res) => {

@@ -1,0 +1,33 @@
+<%- include('layout', { title: 'Yeni Kullanıcı Ekle' }) %>
+
+<h3>Yeni Kullanıcı Ekle</h3>
+
+<% if (typeof error !== 'undefined' && error) { %>
+  <div class="alert alert-danger"><%= error %></div>
+<% } %>
+
+<form method="post" action="/users/create">
+  <div class="mb-3">
+    <label for="username" class="form-label">Kullanıcı Adı</label>
+    <input id="username" name="username" class="form-control" required />
+  </div>
+  <div class="mb-3">
+    <label for="fullName" class="form-label">Ad Soyad</label>
+    <input id="fullName" name="fullName" class="form-control" />
+  </div>
+  <div class="mb-3">
+    <label for="password" class="form-label">Şifre</label>
+    <input id="password" name="password" type="password" class="form-control" required />
+  </div>
+  <div class="mb-3">
+    <label for="role" class="form-label">Rol</label>
+    <select id="role" name="role" class="form-select">
+      <option value="user">Kullanıcı</option>
+      <option value="admin">Admin</option>
+    </select>
+  </div>
+  <div>
+    <button class="btn btn-primary">Ekle</button>
+    <a href="/users" class="btn btn-secondary">İptal</a>
+  </div>
+</form>
