@@ -55,18 +55,21 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Ensure at least one admin user exists in DB (ENV: ADMIN_USER, ADMIN_PASS)
+// Ensure a default admin user exists in DB (ENV: ADMIN_USER, ADMIN_PASS)
 (function ensureDefaultAdminInDb() {
   try {
-    const row = db.prepare('SELECT COUNT(*) as count FROM users').get();
-    const count = row ? Number(row.count || 0) : 0;
-    if (count === 0) {
-      const username = normalizeStr(process.env.ADMIN_USER || 'admin');
-      const password = normalizeStr(process.env.ADMIN_PASS || 'admin');
-      const hash = bcrypt.hashSync(password, 10);
-      db.prepare('INSERT INTO users (username, password, full_name, role, created_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)').run(username, hash, 'Admin', 'admin');
-      console.log('[AUTH] Varsayılan admin oluşturuldu (DB):', username);
-    }
+    const username = normalizeStr(process.env.ADMIN_USER || 'admin');
+    const password = normalizeStr(process.env.ADMIN_PASS || 'admin');
+    const hash = bcrypt.hashSync(password, 10);
+    db.prepare(`
+      INSERT INTO users (username, password, full_name, role, created_at)
+      VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(username) DO UPDATE SET
+        password = excluded.password,
+        full_name = excluded.full_name,
+        role = excluded.role
+    `).run(username, hash, 'Admin', 'admin');
+    console.log('[AUTH] Varsayılan admin hazırlandı (DB):', username);
   } catch (e) {
     console.error('Default admin creation failed:', e.message);
   }
@@ -74,10 +77,12 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Session middleware
 // Use SQLite-backed session store so sessions survive server restarts
+const dataDir = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : '/data';
+fs.mkdirSync(dataDir, { recursive: true });
 app.use(session({
   store: new SQLiteStore({
     db: 'sessions.sqlite',
-    dir: path.join(__dirname, 'data'),
+    dir: dataDir,
     concurrentDB: true
   }),
   secret: process.env.SESSION_SECRET || 'change_this_secret',

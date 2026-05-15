@@ -29,6 +29,7 @@ ENV TZ=Europe/Istanbul
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 RUN mkdir -p /data /app/public/uploads/personnel
+RUN chmod -R 0777 /data /app/public/uploads/personnel || true
 
 EXPOSE 3000
 

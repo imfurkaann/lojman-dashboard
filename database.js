@@ -1,11 +1,27 @@
 const Database = require('better-sqlite3');
+const fs = require('fs');
 const path = require('path');
 const { encryptTcNumberSync, createTcFingerprint } = require('./middleware/tc-encryption');
 
 const dbPath = process.env.DB_PATH
   ? path.resolve(process.env.DB_PATH)
   : path.join(__dirname, 'lojman.db');
-const db = new Database(dbPath);
+
+try {
+  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+} catch (err) {
+  console.error(`SQLite dizini oluşturulamadı: ${path.dirname(dbPath)} (${err.message})`);
+}
+
+let db;
+try {
+  db = new Database(dbPath);
+} catch (err) {
+  console.error(`SQLite veritabanı açılamadı: ${dbPath}`);
+  console.error('DB_PATH env:', process.env.DB_PATH || '(unset)');
+  console.error('cwd:', process.cwd());
+  throw err;
+}
 
 function formatLocalTimestamp(date = new Date()) {
   const year = String(date.getFullYear());
