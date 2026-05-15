@@ -9,6 +9,24 @@ function normalizeStr(v) {
   try { return v.normalize('NFC'); } catch (e) { return v; }
 }
 
+function detachUserReferences(userId) {
+  const tx = db.transaction((targetUserId) => {
+    db.prepare('UPDATE room_issues SET reported_by = NULL WHERE reported_by = ?').run(targetUserId);
+    db.prepare('UPDATE room_inventory SET added_by = NULL WHERE added_by = ?').run(targetUserId);
+    db.prepare('UPDATE personnel SET added_by = NULL WHERE added_by = ?').run(targetUserId);
+    db.prepare('UPDATE personnel_complaints SET recorded_by = NULL WHERE recorded_by = ?').run(targetUserId);
+    db.prepare('UPDATE entry_exit_list SET added_by = NULL WHERE added_by = ?').run(targetUserId);
+    db.prepare('UPDATE activity_log SET performed_by = NULL WHERE performed_by = ?').run(targetUserId);
+    db.prepare('UPDATE shared_equipment SET recorded_by = NULL WHERE recorded_by = ?').run(targetUserId);
+    db.prepare('UPDATE visitors SET recorded_by = NULL WHERE recorded_by = ?').run(targetUserId);
+    db.prepare('UPDATE fire_alarms SET recorded_by = NULL WHERE recorded_by = ?').run(targetUserId);
+    db.prepare('UPDATE notes SET created_by = NULL WHERE created_by = ?').run(targetUserId);
+    db.prepare('UPDATE inventory_mutations SET created_by = NULL WHERE created_by = ?').run(targetUserId);
+  });
+
+  tx(userId);
+}
+
 router.get('/', (req, res) => {
   const users = db.prepare('SELECT id, username, full_name as fullName, role, created_at FROM users ORDER BY id ASC').all();
   res.render('users', { users });
@@ -56,6 +74,7 @@ router.post('/delete', (req, res) => {
   const isSelf = req.session && req.session.user && Number(req.session.user.id) === numId;
   console.log(`[USER-MGMT] delete requested: targetId=${numId}, sessionUserId=${req.session && req.session.user ? req.session.user.id : 'none'}, isSelf=${isSelf}`);
 
+  detachUserReferences(numId);
   db.prepare('DELETE FROM users WHERE id = ?').run(numId);
 
   if (isSelf) {
