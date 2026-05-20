@@ -2,8 +2,9 @@ services:
   app:
     build: .
     container_name: lojman-dashboard
+    # Do not publish app port directly in production; nginx will proxy TLS
     ports:
-      - "0.0.0.0:3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
       NODE_ENV: production
       PORT: 3000
@@ -21,6 +22,19 @@ services:
       timeout: 10s
       retries: 5
       start_period: 45s
+
+  nginx:
+    image: nginx:stable-alpine
+    container_name: lojman-nginx
+    depends_on:
+      - app
+    ports:
+      - "0.0.0.0:80:80"
+      - "0.0.0.0:443:443"
+    volumes:
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+    restart: unless-stopped
 
 volumes:
   lojman-db-volume:

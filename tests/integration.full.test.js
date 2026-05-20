@@ -53,7 +53,7 @@ async function postForm(pathname, payload) {
   return res;
 }
 
-test.before(() => {
+test.before(async () => {
   fs.mkdirSync(tempDir, { recursive: true });
   cleanupDbFiles();
 
@@ -67,8 +67,23 @@ test.before(() => {
   server = appModule.server;
   db = database.db;
 
+  // Wait for the server to be fully listening (avoid race in fast/slow containers)
+  const waitForServerToListen = async (srv, timeout = 5000) => {
+    const start = Date.now();
+    while (!(srv.address && typeof srv.address === 'function' && srv.address() && typeof srv.address() === 'object' && srv.address().port)) {
+      if (Date.now() - start > timeout) throw new Error('Timeout waiting for server to listen');
+      await new Promise(r => setTimeout(r, 50));
+    }
+  };
+
+  await waitForServerToListen(server);
+
   const address = server.address();
-  const port = address && typeof address === 'object' ? address.port : Number(process.env.PORT || 3000);
+  let port = address && typeof address === 'object' ? address.port : Number(process.env.PORT || 3000);
+  // If port is 0 or otherwise falsy, fall back to env PORT or 3000 to avoid using :0
+  if (!port || Number(port) <= 0) {
+    port = Number(process.env.PORT) || 3000;
+  }
   baseUrl = `http://127.0.0.1:${port}`;
 });
 

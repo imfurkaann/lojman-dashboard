@@ -47,10 +47,22 @@ if errorlevel 1 (
     REM Alternatif yol dene
     docker cp lojman-dashboard:/app/lojman.db "%BACKUP_DIR%\lojman.db" 2>nul
 )
+docker cp lojman-dashboard:/data/lojman.db-wal "%BACKUP_DIR%\lojman.db-wal" 2>nul
+docker cp lojman-dashboard:/data/lojman.db-shm "%BACKUP_DIR%\lojman.db-shm" 2>nul
 if exist "%BACKUP_DIR%\lojman.db" (
     echo [OK] Database yedeklendi.
 ) else (
     echo [UYARI] Database yedeklenemedi - container icindeki yolu kontrol edin.
+)
+if exist "%BACKUP_DIR%\lojman.db-wal" (
+    echo [OK] SQLite WAL dosyasi yedeklendi.
+) else (
+    echo [UYARI] SQLite WAL dosyasi bulunamadi veya yedeklenemedi.
+)
+if exist "%BACKUP_DIR%\lojman.db-shm" (
+    echo [OK] SQLite SHM dosyasi yedeklendi.
+) else (
+    echo [UYARI] SQLite SHM dosyasi bulunamadi veya yedeklenemedi.
 )
 
 REM -----------------------------------------------
