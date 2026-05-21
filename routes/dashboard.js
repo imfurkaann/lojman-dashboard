@@ -14,7 +14,8 @@ router.get('/', (req, res) => {
   const storageRooms = db.prepare("SELECT COUNT(*) as count FROM rooms WHERE status = 'depo'").get().count;
 
   // Personel istatistikleri
-  const registeredPersonnel = db.prepare('SELECT COUNT(*) as count FROM personnel').get().count;
+  // Çıkış yapmış (status = 'cikis_yapti') personel sayısı
+  const exitedPersonnel = db.prepare("SELECT COUNT(*) as count FROM personnel WHERE status = 'cikis_yapti'").get().count;
 
   // Lojmanda konaklayan personel (odası olan ve aktif)
   const occupiedPersonnel = db.prepare("SELECT COUNT(*) as count FROM personnel WHERE room_id IS NOT NULL AND status = 'aktif'").get().count;
@@ -51,7 +52,7 @@ router.get('/', (req, res) => {
   res.render('dashboard', {
     title: 'Ana Sayfa',
     totalRooms, emptyRooms, fullRooms, partialRooms, availableRooms, cleaningNeededRooms, unavailableRooms, storageRooms,
-    registeredPersonnel, occupiedPersonnel, todayEntries, todayExits,
+    exitedPersonnel, occupiedPersonnel, todayEntries, todayExits,
     openIssues, unreturned, recentActivity
   });
 });

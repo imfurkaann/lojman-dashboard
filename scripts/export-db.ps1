@@ -24,7 +24,8 @@ $containerId = (docker ps -a --filter "name=lojman-dashboard" -q) 2>$null
 if ($containerId) {
     Write-Host "Container lojman-dashboard found — trying docker cp..."
     New-Item -ItemType Directory -Force -Path .\tempdata | Out-Null
-    docker cp "$containerId:/data/lojman.db" .\tempdata\lojman.db 2>$null
+    # Use $($containerId) to avoid PowerShell parsing the ':' as part of the variable name
+    docker cp "$($containerId):/data/lojman.db" .\tempdata\lojman.db 2>$null
     if (Test-Path .\tempdata\lojman.db) {
         Compress-Archive -Path .\tempdata\lojman.db -DestinationPath .\backup\lojman-db.zip -Force
         Remove-Item -Recurse -Force .\tempdata
@@ -36,11 +37,18 @@ if ($containerId) {
 # Fallback: check for named volume lojman-db-volume
 $volumes = docker volume ls --format '{{.Name}}' 2>$null
 if ($volumes -match 'lojman-db-volume') {
-    Write-Host "Docker volume lojman-db-volume found — exporting via temporary container..."
-    docker run --rm -v lojman-db-volume:/volume -v ${PWD}:/backup alpine sh -c "cd /volume && tar czf /backup/lojman-db.tar.gz ." 2>$null
-    if (Test-Path .\lojman-db.tar.gz) {
-        Move-Item .\lojman-db.tar.gz .\backup\lojman-db.tar.gz -Force
-        Write-Host "Exported to backup\lojman-db.tar.gz"
+    Write-Host 'Docker volume lojman-db-volume found — exporting via temporary container...'
+    $pwdStr = (Get-Location).Path
+    # Run docker with argument array to avoid PowerShell parsing/interpolation issues
+    $cmd = @(
+        'run', '--rm',
+        '-v', 'lojman-db-volume:/volume',
+        '-v', ($pwdStr + ':/backup'),
+        'alpine', 'sh', '-c', 'cd /volume && tar czf /backup/lojman-db.tar.gz .'
+    )
+    & docker @cmd 2>$null
+    if (Test-Path .\backup\lojman-db.tar.gz) {
+        Write-Host 'Exported to backup\lojman-db.tar.gz'
         exit 0
     }
 }
