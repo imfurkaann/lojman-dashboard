@@ -12,8 +12,8 @@ services:
       LANG: C.UTF-8
       LC_ALL: C.UTF-8
     volumes:
-      - lojman-db-volume:/data
-      - uploads-volume:/app/public/uploads
+      - ./data:/data
+      - ./public/uploads:/app/public/uploads
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/dashboard"]
@@ -22,8 +22,5 @@ services:
       retries: 5
       start_period: 45s
 
-volumes:
-  lojman-db-volume:
-    driver: local
-  uploads-volume:
-    driver: local
+# Using bind mounts to keep DB and uploads on the host filesystem.
+# Volumes removed: switched to host folders under the project directory.
