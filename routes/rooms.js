@@ -485,9 +485,6 @@ router.post('/:id/personel-ata', (req, res) => {
     } catch (_) {
       handoverData = null;
     }
-    if (!handoverData || !handoverData.form_signed) {
-      return res.redirect(`/odalar/${roomId}?error=` + encodeURIComponent('Zimmet formu zorunludur.'));
-    }
 
     const keyDeliveredValue = ((handoverData && handoverData.key_delivered) || req.body.key_delivered === '1') ? 1 : 0;
     const safeHandoverData = handoverData || {
@@ -614,11 +611,12 @@ router.post('/:id/sil', (req, res) => {
   res.redirect('/odalar');
 });
 
-// Oda sorunu ekle
+// Oda sorunu ekle (tek alan: `sorun`)
 router.post('/:id/sorun-ekle', (req, res) => {
-  const { title, description } = req.body;
+  const { sorun } = req.body;
+  const title = String(sorun || '').trim();
   const safeUserId = getSafeUserId(req);
-  db.prepare("INSERT INTO room_issues (room_id, title, description, issue_type, reported_by) VALUES (?, ?, ?, 'oda', ?)").run(req.params.id, title, description || null, safeUserId);
+  db.prepare("INSERT INTO room_issues (room_id, title, description, issue_type, reported_by) VALUES (?, ?, ?, 'oda', ?)").run(req.params.id, title, null, safeUserId);
   const room = db.prepare('SELECT room_number FROM rooms WHERE id = ?').get(req.params.id);
   logActivity('sorun_eklendi', `${room.room_number} odasına sorun eklendi: ${title}`, null, safeUserId);
   emitReportRefresh(req, req.params.id);
@@ -862,26 +860,10 @@ router.post('/:id/personel-ekle', upload.single('photo'), async (req, res) => {
 
   const photoPath = req.file ? `/uploads/personnel/${req.file.filename}` : null;
   const isFormSigned = ['on', '1', 'true'].includes(String(form_signed || '').toLowerCase()) ? 1 : 0;
-  const tcFingerprint = createTcFingerprint(normalizedTc);
+  // TC kimlik numarası artık zorunlu değil. Eğer sağlanırsa fingerprint/encryption yapılır.
+  let tcFingerprint = null;
 
-  // TC kimlik numarası zorunludur
-  if (!normalizedTc) {
-    if (req.file) {
-      const path = require('path');
-      const fs = require('fs');
-      fs.unlink(path.join(__dirname, '..', 'public', photoPath), () => {});
-    }
-    return res.status(400).send('TC kimlik no zorunludur.');
-  }
-
-  if (!isFormSigned) {
-    if (req.file) {
-      const path = require('path');
-      const fs = require('fs');
-      fs.unlink(path.join(__dirname, '..', 'public', photoPath), () => {});
-    }
-    return res.status(400).send('Zimmet formu zorunludur.');
-  }
+  // Zimmet formu artık zorunlu değil; form_signed kontrolü kaldırıldı
 
   // TC numarası kontrolü (hızlı fingerprint eşleşmesi)
   let existingPerson = null;
@@ -923,9 +905,16 @@ router.post('/:id/personel-ekle', upload.single('photo'), async (req, res) => {
       return res.status(400).send('Bu oda kapasitesini doldurmuştur.');
     }
     const keyDeliveredValue = key_delivered === '1' ? 1 : 0;
-    const encryptedTc = await encryptTcNumber(normalizedTc);
+    let encryptedTc = existingPerson.tc_number_encrypted || null;
+    let tcLastFour = existingPerson.tc_last_four || null;
+    if (normalizedTc) {
+      encryptedTc = await encryptTcNumber(normalizedTc);
+      tcFingerprint = createTcFingerprint(normalizedTc);
+      tcLastFour = normalizedTc.slice(-4);
+    }
+
     db.prepare('UPDATE personnel SET first_name = ?, last_name = ?, gender = ?, phone = ?, department = ?, room_id = ?, status = ?, check_in_date = ?, photo_path = ?, form_signed = ?, tc_number_encrypted = ?, tc_number_fingerprint = ?, tc_last_four = ? WHERE id = ?').run(
-      first_name, last_name, gender, phone || null, department || null, req.params.id, 'aktif', formatLocalTimestamp(), photoPath || existingPerson.photo_path, isFormSigned, encryptedTc, tcFingerprint, normalizedTc.slice(-4), existingPerson.id
+      first_name, last_name, gender, phone || null, department || null, req.params.id, 'aktif', formatLocalTimestamp(), photoPath || existingPerson.photo_path, isFormSigned, encryptedTc, tcFingerprint, tcLastFour, existingPerson.id
     );
     db.prepare('UPDATE personnel SET key_delivered = ?, checkout_key_returned = NULL WHERE id = ?').run(keyDeliveredValue, existingPerson.id);
     db.prepare('UPDATE personnel SET checkout_room_id = NULL WHERE id = ?').run(existingPerson.id);
@@ -947,9 +936,16 @@ router.post('/:id/personel-ekle', upload.single('photo'), async (req, res) => {
       return res.status(400).send('Bu oda kapasitesini doldurmuştur.');
     }
     const keyDeliveredValue = key_delivered === '1' ? 1 : 0;
-    const encryptedTc = await encryptTcNumber(normalizedTc);
+    let encryptedTc = null;
+    let tcLastFour = null;
+    if (normalizedTc) {
+      encryptedTc = await encryptTcNumber(normalizedTc);
+      tcFingerprint = createTcFingerprint(normalizedTc);
+      tcLastFour = normalizedTc.slice(-4);
+    }
+
     const result = db.prepare('INSERT INTO personnel (first_name, last_name, gender, phone, department, room_id, status, tc_number_encrypted, tc_number_fingerprint, tc_last_four, photo_path, form_signed, entry_handover_payload, key_delivered, check_in_date, added_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
-      first_name, last_name, gender, phone || null, department || null, req.params.id, 'aktif', encryptedTc, tcFingerprint, normalizedTc.slice(-4), photoPath, isFormSigned, handover_payload || null, keyDeliveredValue, formatLocalTimestamp(), safeUserId
+      first_name, last_name, gender, phone || null, department || null, req.params.id, 'aktif', encryptedTc, tcFingerprint, tcLastFour, photoPath, isFormSigned, handover_payload || null, keyDeliveredValue, formatLocalTimestamp(), safeUserId
     );
   }
 

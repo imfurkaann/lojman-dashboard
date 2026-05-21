@@ -517,9 +517,7 @@ router.post('/:id/oda-ata', (req, res) => {
     } catch (_) {
       handoverData = null;
     }
-    if (!handoverData || !handoverData.form_signed) {
-      return res.status(400).send('Zimmet formu zorunludur.');
-    }
+    // Zimmet formu artık zorunlu değil; handoverData varsa işlenecek, yoksa atlanacak
     const handoverItems = handoverData && Array.isArray(handoverData.items) ? handoverData.items : [];
     const keyDeliveredValue = handoverData && handoverData.key_delivered ? 1 : 0;
 
@@ -590,46 +588,29 @@ router.post('/ekle', async (req, res) => {
     const safeUserId = actorUser ? actorUser.id : null;
     const wantsJson = (req.headers.accept || '').includes('application/json') || req.xhr;
 
-  // TC kimlik numarası zorunludur
-    if (!normalizedTc) {
-      if (req.file) {
-        fs.unlink(path.join(uploadDir, req.file.filename), () => {});
+  // TC kimlik numarası artık zorunlu değil. Eğer girildiyse şifreleme ve duplicate kontrolü yapılır.
+    let encryptedTc = null;
+    let tcFingerprint = null;
+    let existingPerson = null;
+    if (normalizedTc) {
+      try {
+        encryptedTc = await encryptTcNumber(normalizedTc);
+      } catch (error) {
+        console.error('TC şifreleme hatası:', error);
+        if (req.file) {
+          fs.unlink(path.join(uploadDir, req.file.filename), () => {});
+        }
+        if (wantsJson) {
+          return res.status(500).json({ error: 'Sistem hatası' });
+        }
+        return res.status(500).send('TC kaydı sırasında hata oluştu.');
       }
-      if (wantsJson) {
-        return res.status(400).json({ error: 'TC kimlik no zorunludur.' });
-      }
-      return res.status(400).send('TC kimlik no zorunludur.');
-    }
+      tcFingerprint = createTcFingerprint(normalizedTc);
 
-    // TC numarasını şifrele
-    let encryptedTc;
-    try {
-      encryptedTc = await encryptTcNumber(normalizedTc);
-    } catch (error) {
-      console.error('TC şifreleme hatası:', error);
-      if (req.file) {
-        fs.unlink(path.join(uploadDir, req.file.filename), () => {});
-      }
-      if (wantsJson) {
-        return res.status(500).json({ error: 'Sistem hatası' });
-      }
-      return res.status(500).send('TC kaydı sırasında hata oluştu.');
+      // TC numarası kontrolü - tüm personelleri getir ve şifreli TC ile eşleştir
+      const duplicatePerson = await findDuplicatePersonnelByTc(normalizedTc);
+      existingPerson = duplicatePerson ? db.prepare('SELECT * FROM personnel WHERE id = ?').get(duplicatePerson.id) : null;
     }
-    const tcFingerprint = createTcFingerprint(normalizedTc);
-
-    if (!isFormSigned) {
-      if (req.file) {
-        fs.unlink(path.join(uploadDir, req.file.filename), () => {});
-      }
-      if (wantsJson) {
-        return res.status(400).json({ error: 'Zimmet formu zorunludur.' });
-      }
-      return res.status(400).send('Zimmet formu zorunludur.');
-    }
-
-  // TC numarası kontrolü - tüm personelleri getir ve şifreli TC ile eşleştir
-    const duplicatePerson = await findDuplicatePersonnelByTc(normalizedTc);
-    const existingPerson = duplicatePerson ? db.prepare('SELECT * FROM personnel WHERE id = ?').get(duplicatePerson.id) : null;
 
   // Mevcut kimse varsa ve action belirtilmediyse, o kişinin bilgilerini gönder
     if (existingPerson && !action) {
@@ -672,7 +653,7 @@ router.post('/ekle', async (req, res) => {
     const nextStatus = nextRoomId ? 'aktif' : 'bosta';
     const nextCheckInDate = nextRoomId ? formatLocalTimestamp() : null;
     const roomChangeAt = formatLocalTimestamp();
-    const tcLastFour = normalizedTc.slice(-4);
+    const tcLastFour = normalizedTc ? normalizedTc.slice(-4) : (person && person.tc_last_four ? person.tc_last_four : null);
     db.prepare('UPDATE personnel SET first_name = ?, last_name = ?, gender = ?, phone = ?, department = ?, room_id = ?, status = ?, check_in_date = ?, photo_path = ?, form_signed = ?, entry_handover_payload = ?, key_delivered = ?, tc_number_encrypted = ?, tc_number_fingerprint = ?, tc_last_four = ? WHERE id = ?').run(
       first_name, last_name, gender, phone || null, department || null,
       nextRoomId,
@@ -727,7 +708,7 @@ router.post('/ekle', async (req, res) => {
     }
     const nextStatus = parsedRoomId ? 'aktif' : 'bosta';
     const checkInDate = parsedRoomId ? formatLocalTimestamp() : null;
-    const tcLastFour = normalizedTc.slice(-4);
+    const tcLastFour = normalizedTc ? normalizedTc.slice(-4) : null;
     const result = db.prepare('INSERT INTO personnel (first_name, last_name, gender, phone, department, room_id, status, tc_number_encrypted, tc_number_fingerprint, tc_last_four, photo_path, form_signed, entry_handover_payload, key_delivered, check_in_date, added_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
       first_name, last_name, gender, phone || null, department || null,
       parsedRoomId,
@@ -807,29 +788,27 @@ router.post('/ekle-ve-ata', async (req, res) => {
   const safeUserId = actorUser ? actorUser.id : null;
   const parsedRoomId = Number.parseInt(room_id, 10);
 
-  if (!Number.isInteger(parsedRoomId)) {
-    return res.redirect('/odalar?error=' + encodeURIComponent('Oda bilgisi eksik.'));
-  }
+    // Room assignment is optional when using ekle-ve-ata; allow missing room_id
+    // parsedRoomId may be NaN if not provided
 
-  if (!normalizedTc) {
-    return res.redirect(`/odalar/${parsedRoomId}?error=` + encodeURIComponent('TC kimlik no zorunludur.'));
-  }
+  // TC artık zorunlu değil; sadece sağlanmışsa şifrele ve duplicate kontrolü yap
+  let encryptedTc = null;
+  let tcFingerprint = null;
+  let existingPerson = null;
+  if (normalizedTc) {
+    try {
+      encryptedTc = await encryptTcNumber(normalizedTc);
+    } catch (error) {
+      console.error('TC şifreleme hatası:', error);
+      return res.redirect(`/odalar/${parsedRoomId}?error=` + encodeURIComponent('Sistem hatası'));
+    }
+    tcFingerprint = createTcFingerprint(normalizedTc);
 
-  // TC numarasını şifrele
-  let encryptedTc;
-  try {
-    encryptedTc = await encryptTcNumber(normalizedTc);
-  } catch (error) {
-    console.error('TC şifreleme hatası:', error);
-    return res.redirect(`/odalar/${parsedRoomId}?error=` + encodeURIComponent('Sistem hatası'));
-  }
-  const tcFingerprint = createTcFingerprint(normalizedTc);
-
-  // TC duplicate kontrolü - şifreli versiyonlarla karşılaştır
-  const existingPerson = await findDuplicatePersonnelByTc(normalizedTc);
-
-  if (existingPerson) {
-    return res.redirect(`/odalar/${parsedRoomId}?error=` + encodeURIComponent('Bu kişi zaten sistemde kayıtlıdır.'));
+    // TC duplicate kontrolü - şifreli versiyonlarla karşılaştır
+    existingPerson = await findDuplicatePersonnelByTc(normalizedTc);
+    if (existingPerson) {
+      return res.redirect(`/odalar/${parsedRoomId}?error=` + encodeURIComponent('Bu kişi zaten sistemde kayıtlıdır.'));
+    }
   }
 
   const roomExists = db.prepare('SELECT id FROM rooms WHERE id = ?').get(parsedRoomId);
@@ -858,12 +837,7 @@ router.post('/ekle-ve-ata', async (req, res) => {
     const keyDeliveredValue = handoverData && handoverData.key_delivered ? 1 : 0;
     let syncedKeyQty = null;
 
-    if (!handoverData || !handoverData.form_signed) {
-      if (req.file) {
-        fs.unlink(path.join(uploadDir, req.file.filename), () => {});
-      }
-      return res.status(400).send('Zimmet formu zorunludur.');
-    }
+    // Zimmet formu artık zorunlu değil; eğer verilmişse işlenecek, yoksa atlanacak
 
     // 1. Personeli oluştur
     const checkInAt = formatLocalTimestamp();
@@ -1224,26 +1198,24 @@ router.post('/:id/oda-degistir', (req, res) => {
   }
 
   if (person.status !== 'aktif' && parsedNewRoomId) {
-    const isFormSigned = reassign_form_signed === '1';
-    if (!isFormSigned) {
-      return res.status(400).send('Yeniden oda tahsisi için zimmet formu zorunludur.');
-    }
-
+    // Zimmet formu artık zorunlu değil. Eğer handover payload verilmişse, eksiksiz ve doğru olduğundan emin ol.
     const payloadItems = parsedPayload && Array.isArray(parsedPayload.items) ? parsedPayload.items : [];
     const expectedItems = getRoomInventoryItemNames(parsedNewRoomId);
-    if (payloadItems.length !== expectedItems.length) {
-      return res.status(400).send('Yeniden oda tahsisi için tüm demirbaş teslim bilgileri zorunludur.');
-    }
+    if (payloadItems.length > 0) {
+      if (payloadItems.length !== expectedItems.length) {
+        return res.status(400).send('Yeniden oda tahsisi için tüm demirbaş teslim bilgileri zorunludur.');
+      }
 
-    const allValid = expectedItems.every(itemName => {
-      const item = payloadItems.find(i => normalizeInventoryName(i && i.name) === normalizeInventoryName(itemName));
-      if (!item) return false;
-      if (item.delivered) return true;
-      return !!item.tag;
-    });
+      const allValid = expectedItems.every(itemName => {
+        const item = payloadItems.find(i => normalizeInventoryName(i && i.name) === normalizeInventoryName(itemName));
+        if (!item) return false;
+        if (item.delivered) return true;
+        return !!item.tag;
+      });
 
-    if (!allValid) {
-      return res.status(400).send('Yeniden oda tahsisi için sorunlu demirbaşlarda sorun türü seçilmelidir.');
+      if (!allValid) {
+        return res.status(400).send('Yeniden oda tahsisi için sorunlu demirbaşlarda sorun türü seçilmelidir.');
+      }
     }
   }
 
@@ -1540,9 +1512,10 @@ router.post('/:id/sil', (req, res) => {
   }
 });
 
-// Şikayet ekle
+// Şikayet ekle (tek alan: `sikayet`)
 router.post('/:id/sikayet-ekle', (req, res) => {
-  const { title, description } = req.body;
+  const { sikayet } = req.body;
+  const title = String(sikayet || '').trim();
   const rawUserId = req.session && req.session.user ? req.session.user.id : null;
   const actorUser = rawUserId ? db.prepare('SELECT id FROM users WHERE id = ?').get(rawUserId) : null;
   const safeUserId = actorUser ? actorUser.id : null;
@@ -1550,7 +1523,7 @@ router.post('/:id/sikayet-ekle', (req, res) => {
   db.prepare('INSERT INTO personnel_complaints (personnel_id, title, description, recorded_by) VALUES (?, ?, ?, ?)').run(
     req.params.id,
     title,
-    description || null,
+    null,
     safeUserId
   );
   const person = db.prepare('SELECT first_name, last_name FROM personnel WHERE id = ?').get(req.params.id);
@@ -1569,12 +1542,13 @@ router.post('/:id/sikayet-ekle', (req, res) => {
   res.redirect(`/personel/${req.params.id}`);
 });
 
-// Şikayet düzenle
+// Şikayet düzenle (tek alan: `sikayet`)
 router.post('/:id/sikayet/:complaintId/duzenle', (req, res) => {
-  const { title, description } = req.body;
+  const { sikayet } = req.body;
+  const title = String(sikayet || '').trim();
   db.prepare('UPDATE personnel_complaints SET title = ?, description = ? WHERE id = ? AND personnel_id = ?').run(
     title,
-    description || null,
+    null,
     req.params.complaintId,
     req.params.id
   );

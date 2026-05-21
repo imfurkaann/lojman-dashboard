@@ -295,8 +295,9 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
               </select>
             </div>
             <div class="col-6">
-              <label class="form-label">TC Kimlik No *</label>
-              <input type="text" class="form-control" name="tc_number" placeholder="11 haneli TC no" required maxlength="11" pattern="[0-9]{11}">
+              <label class="form-label">TC Kimlik No</label>
+              <input type="text" class="form-control" name="tc_number" placeholder="11 haneli TC no" maxlength="11" pattern="[0-9]{11}">
+              <small class="text-muted">Opsiyonel — boş bırakırsanız kayıt yapılır.</small>
             </div>
           </div>
           <div class="row g-3 mt-1">
@@ -380,7 +381,7 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
                   <small class="text-muted d-block">İmzalandı mı?</small>
                 </div>
                 <div class="form-check m-0">
-                  <input class="form-check-input" type="checkbox" id="formSignedCheck" name="form_signed" required>
+                  <input class="form-check-input" type="checkbox" id="formSignedCheck" name="form_signed">
                   <label class="form-check-label" for="formSignedCheck">Evet</label>
                 </div>
               </div>
@@ -447,7 +448,7 @@ const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dy
                   <small class="text-muted d-block">İmzalandı mı?</small>
                 </div>
                 <div class="form-check m-0">
-                  <input class="form-check-input" type="checkbox" id="assignFormSignedCheck" name="form_signed" required>
+                  <input class="form-check-input" type="checkbox" id="assignFormSignedCheck" name="form_signed">
                   <label class="form-check-label" for="assignFormSignedCheck">Evet</label>
                 </div>
               </div>
@@ -1164,11 +1165,7 @@ if (assignHandoverSection) {
 
 document.querySelector('#addPersonnelModal form').addEventListener('submit', function(e) {
   e.preventDefault();
-
-  if (!document.getElementById('formSignedCheck')?.checked) {
-    alert('Zimmet formu zorunludur.');
-    return;
-  }
+  // Zimmet formu artık zorunlu değil; işaretli ise handover verisi gönderilecek.
   
   const roomId = roomSelectForHandover.value;
   if (roomId && !ensureAssignmentAvailability(roomId, allowCleaningOverrideInput)) {
@@ -1263,14 +1260,9 @@ document.querySelector('#addPersonnelModal form').addEventListener('submit', fun
 
 if (assignRoomForm) {
   assignRoomForm.addEventListener('submit', function(e) {
+    e.preventDefault();
     const roomId = assignRoomSelect ? assignRoomSelect.value : '';
     if (!roomId) return;
-
-    if (!document.getElementById('assignFormSignedCheck')?.checked) {
-      e.preventDefault();
-      alert('Zimmet formu zorunludur.');
-      return;
-    }
 
     if (!ensureAssignmentAvailability(roomId, assignAllowCleaningOverrideInput)) {
       e.preventDefault();

@@ -28,6 +28,23 @@ const dynamicDepartmentOptions = (departments || []).map(d => d.department).filt
 const departmentOptions = Array.from(new Set([...defaultDepartmentOptions, ...dynamicDepartmentOptions]))
   .sort((a, b) => a.localeCompare(b, 'tr'));
 const roomAvailability = room.availability_status || 'musait';
+// Telefonu okunaklı göstermek için yardımcı fonksiyon
+function formatPhone(raw) {
+  const s = String(raw || '').replace(/\D/g, '');
+  if (!s) return '';
+  // Türkiye formatı: 0XXX XXX XXXX veya 0XXXX XXX XXX için 11 haneli
+  if (s.length === 11 && s[0] === '0') {
+    // Örnek: 05000000001 -> 0500 000 0001
+    return s.replace(/(\d{4})(\d{3})(\d{4})/, '$1 $2 $3');
+  }
+  if (s.length === 10) {
+    return s.replace(/(\d{3})(\d{3})(\d{4})/, '$1 $2 $3');
+  }
+  // Daha kısa/uzun numaralar için gruplandır
+  if (s.length <= 4) return s;
+  if (s.length <= 7) return s.replace(/(\d{3})(\d{1,4})/, '$1 $2');
+  return s.replace(/(\d{3})(\d{3})(\d{1,4})/, '$1 $2 $3');
+}
 %>
 
 <style>
@@ -323,7 +340,7 @@ const roomAvailability = room.availability_status || 'musait';
           <tr>
             <td><a href="/personel/<%= p.id %>"><%= p.first_name %> <%= p.last_name %></a></td>
             <td><%= p.gender === 'erkek' ? 'Erkek' : 'Kadın' %></td>
-            <td><%= p.phone || '-' %></td>
+            <td><%= p.phone ? formatPhone(p.phone) : '-' %></td>
             <td><%= p.department || '-' %></td>
             <td><%= p.check_in_date ? new Date(p.check_in_date).toLocaleDateString('tr-TR') : '-' %></td>
             <td><a href="/personel/<%= p.id %>" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a></td>
@@ -348,13 +365,12 @@ const roomAvailability = room.availability_status || 'musait';
       <div class="table-responsive">
         <table class="table table-hover mb-0">
           <thead class="table-light">
-            <tr><th>Başlık</th><th>Açıklama</th><th>Durum</th><th>Açılış</th><th>Kapanış</th><th></th></tr>
+            <tr><th>Başlık</th><th>Durum</th><th>Açılış</th><th>Kapanış</th><th></th></tr>
           </thead>
           <tbody>
             <% roomIssues.forEach(i => { %>
             <tr>
               <td><strong><%= i.title %></strong></td>
-              <td><%= i.description || '-' %></td>
               <td>
                 <% if (i.status === 'acik') { %>
                   <span class="badge bg-danger">Açık</span>
@@ -694,8 +710,9 @@ const roomAvailability = room.availability_status || 'musait';
               <input type="text" class="form-control mt-2 d-none" id="roomDepartmentInput" name="department" placeholder="Departman yazın">
             </div>
             <div class="col-md-6 mb-3">
-              <label class="form-label">TC Kimlik No *</label>
-              <input type="text" class="form-control" name="tc_number" placeholder="11 haneli TC no" required maxlength="11" pattern="[0-9]{11}">
+              <label class="form-label">TC Kimlik No</label>
+              <input type="text" class="form-control" name="tc_number" placeholder="11 haneli TC no" maxlength="11" pattern="[0-9]{11}">
+              <small class="text-muted">Opsiyonel — boş bırakırsanız kayıt yapılır.</small>
             </div>
           </div>
           <div class="mb-3">
@@ -751,7 +768,7 @@ const roomAvailability = room.availability_status || 'musait';
                   <small class="text-muted d-block">İmzalandı mı?</small>
                 </div>
                 <div class="form-check m-0">
-                  <input class="form-check-input" type="checkbox" id="formSignedCheck" name="form_signed" required>
+                  <input class="form-check-input" type="checkbox" id="formSignedCheck" name="form_signed">
                   <label class="form-check-label" for="formSignedCheck">Evet</label>
                 </div>
               </div>
@@ -877,7 +894,7 @@ const roomAvailability = room.availability_status || 'musait';
                   <small class="text-muted d-block">İmzalandı mı?</small>
                 </div>
                 <div class="form-check m-0">
-                  <input class="form-check-input" type="checkbox" id="assignFormSignedCheck" name="form_signed" required>
+                  <input class="form-check-input" type="checkbox" id="assignFormSignedCheck" name="form_signed">
                   <label class="form-check-label" for="assignFormSignedCheck">Evet</label>
                 </div>
               </div>
@@ -999,13 +1016,9 @@ const roomAvailability = room.availability_status || 'musait';
         </div>
         <div class="modal-body">
           <div class="mb-3">
-            <label class="form-label">Sorun Başlığı *</label>
-            <input type="text" class="form-control" name="title" required placeholder="Örn: Klima çalışmıyor">
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Açıklama</label>
-            <textarea class="form-control" name="description" rows="3"></textarea>
-          </div>
+              <label class="form-label">Sorun *</label>
+              <input type="text" class="form-control" name="sorun" required placeholder="Örn: Klima çalışmıyor">
+            </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
@@ -1474,15 +1487,10 @@ document.addEventListener('DOMContentLoaded', function () {
           if (assignAllowCleaningOverrideInput) assignAllowCleaningOverrideInput.value = '1';
         }
 
-        if (!form.querySelector('#assignFormSignedCheck')?.checked) {
-          e.preventDefault();
-          alert('Zimmet formu zorunludur.');
-          return;
-        }
-
+        // Zimmet formu artık zorunlu değil; handover verileri opsiyonel olarak toplanır
         const handoverData = {
-          form_signed: form.querySelector('#assignFormSignedCheck').checked,
-          key_delivered: form.querySelector('#assignKeyDeliveredCheck').checked,
+          form_signed: !!form.querySelector('#assignFormSignedCheck')?.checked,
+          key_delivered: !!form.querySelector('#assignKeyDeliveredCheck')?.checked,
           items: []
         };
 
@@ -1723,12 +1731,7 @@ document.addEventListener('DOMContentLoaded', function () {
           if (addAllowCleaningOverrideInput) addAllowCleaningOverrideInput.value = '1';
         }
 
-        if (!addForm.querySelector('#formSignedCheck')?.checked) {
-          event.preventDefault();
-          alert('Zimmet formu zorunludur.');
-          return;
-        }
-
+        // Zimmet formu artık zorunlu değil; handover verileri opsiyonel olarak toplanır
         const handoverData = {
           form_signed: !!addForm.querySelector('#formSignedCheck')?.checked,
           key_delivered: !!addForm.querySelector('#keyDeliveredCheck')?.checked,

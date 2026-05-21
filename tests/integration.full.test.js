@@ -178,8 +178,7 @@ test('full user interaction flow works end-to-end', async () => {
   assert.equal(personA.status, 'aktif', 'Assigned personnel should be active');
 
   response = await postForm(`/odalar/${roomA.id}/sorun-ekle`, {
-    title: 'Kapı kolu gevşek',
-    description: 'Kapı kolu sallanıyor'
+    sorun: 'Kapı kolu gevşek'
   });
   assert.equal(response.status, 200, 'Room issue create should complete');
 
@@ -235,8 +234,7 @@ test('full user interaction flow works end-to-end', async () => {
   assert.ok(alarmRow, 'Fire alarm record should exist');
 
   response = await postForm(`/personel/${personA.id}/sikayet-ekle`, {
-    title: 'Temizlik uyarısı',
-    description: 'Test amaçlı şikayet kaydı'
+    sikayet: 'Temizlik uyarısı'
   });
   assert.equal(response.status, 200, 'Personnel complaint create should complete');
 
