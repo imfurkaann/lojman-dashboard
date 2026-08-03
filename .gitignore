@@ -44,5 +44,7 @@ public/uploads/*
 # Temporary backup files (keep main backups folder for reference)
 backups/*.tmp
 *.db.tmp
-yedek/
 
+!yedek/
+!yedek/**
+!yedek/*.db
