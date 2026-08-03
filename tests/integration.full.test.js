@@ -33,23 +33,34 @@ function formBody(payload) {
   );
 }
 
+let cookieHeader = '';
+
 async function get(pathname) {
+  const headers = {};
+  if (cookieHeader) headers['Cookie'] = cookieHeader;
   const res = await fetch(`${baseUrl}${pathname}`, {
     method: 'GET',
+    headers,
     redirect: 'follow'
   });
+  const setCookie = res.headers.get('set-cookie');
+  if (setCookie) cookieHeader = setCookie.split(';')[0];
   return res;
 }
 
 async function postForm(pathname, payload) {
+  const headers = {
+    'Content-Type': 'application/x-www-form-urlencoded'
+  };
+  if (cookieHeader) headers['Cookie'] = cookieHeader;
   const res = await fetch(`${baseUrl}${pathname}`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded'
-    },
+    headers,
     body: formBody(payload),
     redirect: 'follow'
   });
+  const setCookie = res.headers.get('set-cookie');
+  if (setCookie) cookieHeader = setCookie.split(';')[0];
   return res;
 }
 
@@ -74,6 +85,8 @@ test.before(async () => {
   const address = server.address();
   const port = address && typeof address === 'object' ? address.port : Number(process.env.PORT || 3001);
   baseUrl = `http://127.0.0.1:${port}`;
+
+  await postForm('/login', { username: 'admin', password: 'admin' });
 });
 
 test.after(() => {
