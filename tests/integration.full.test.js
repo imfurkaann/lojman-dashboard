@@ -53,7 +53,7 @@ async function postForm(pathname, payload) {
   return res;
 }
 
-test.before(() => {
+test.before(async () => {
   fs.mkdirSync(tempDir, { recursive: true });
   cleanupDbFiles();
 
@@ -67,8 +67,12 @@ test.before(() => {
   server = appModule.server;
   db = database.db;
 
+  if (!server.listening) {
+    await new Promise((resolve) => server.once('listening', resolve));
+  }
+
   const address = server.address();
-  const port = address && typeof address === 'object' ? address.port : Number(process.env.PORT || 3000);
+  const port = address && typeof address === 'object' ? address.port : Number(process.env.PORT || 3001);
   baseUrl = `http://127.0.0.1:${port}`;
 });
 

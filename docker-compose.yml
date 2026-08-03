@@ -3,10 +3,10 @@ services:
     build: .
     container_name: lojman-dashboard
     ports:
-      - "0.0.0.0:3000:3000"
+      - "0.0.0.0:3001:3001"
     environment:
       NODE_ENV: production
-      PORT: 3000
+      PORT: 3001
       DB_PATH: /data/lojman.db
       TZ: Europe/Istanbul
       LANG: C.UTF-8
@@ -16,7 +16,7 @@ services:
       - ./public/uploads:/app/public/uploads
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/dashboard"]
+      test: ["CMD", "curl", "-f", "http://localhost:3001/dashboard"]
       interval: 30s
       timeout: 10s
       retries: 5

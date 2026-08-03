@@ -4,6 +4,9 @@ body {
   overflow-x: hidden;
 }
 
+/* Ensure predictable sizing for responsive layouts */
+*, *::before, *::after { box-sizing: border-box; }
+
 /* Sidebar */
 .sidebar {
   width: 250px;
@@ -233,3 +236,119 @@ body {
 .border-dashed {
   border-style: dashed !important;
 }
+
+/* Modern dashboard theme overrides */
+:root{
+  --dash-bg: linear-gradient(135deg,#f8fafc 0%, #eef2ff 100%);
+  --dash-card-bg: rgba(255,255,255,0.72);
+  --dash-card-glow: 0 8px 30px rgba(28, 46, 78, 0.08);
+  --dash-accent: linear-gradient(90deg,#6366f1,#06b6d4);
+  --dash-muted: #6b7280;
+  --dash-radius: 14px;
+}
+
+.dashboard-top-grid {
+  display:grid;
+  grid-template-columns: repeat(auto-fit,minmax(160px,1fr));
+  gap:1rem;
+  margin-bottom:1rem;
+}
+
+.dashboard-bottom-grid{
+  display:grid;
+  grid-template-columns: repeat(auto-fit,minmax(180px,1fr));
+  gap:0.75rem;
+  margin-bottom:1rem;
+}
+
+.dashboard-metric-card{
+  background: var(--dash-card-bg);
+  border-radius: var(--dash-radius);
+  box-shadow: var(--dash-card-glow);
+  border: 1px solid rgba(99,102,241,0.06);
+  overflow: hidden;
+  transition: transform .18s ease, box-shadow .18s ease;
+}
+.dashboard-metric-card:hover{transform:translateY(-6px);box-shadow:0 18px 40px rgba(28,46,78,0.10)}
+.dashboard-metric-card .card-body{padding:1.1rem;text-align:center}
+
+.dashboard-metric-icon{display:inline-grid;place-items:center;width:64px;height:64px;border-radius:12px;background:linear-gradient(180deg,rgba(255,255,255,0.6),rgba(255,255,255,0.4));box-shadow:inset 0 -6px 12px rgba(255,255,255,0.4);font-size:1.6rem}
+.dashboard-metric-value{font-size:1.9rem;font-weight:700;margin-top:0.6rem;color:#0f172a}
+.dashboard-metric-label{font-size:0.85rem;color:var(--dash-muted);margin-bottom:0}
+
+.dashboard-room-card{background:linear-gradient(180deg, rgba(255,255,255,0.9), rgba(250,250,255,0.86));border-radius:12px;border-left-width:6px;padding:0}
+.dashboard-room-card .card-body{padding:0.8rem 1rem;display:flex;align-items:center;justify-content:space-between}
+.dashboard-room-label{font-size:0.9rem;color:#0b1220;font-weight:600}
+.dashboard-room-card .badge{border-radius:10px;padding:.45rem .6rem;font-weight:700}
+
+.card.header-hero{background:var(--dash-accent);color:#fff;border-radius:16px;padding:1rem 1.25rem;margin-bottom:1rem;box-shadow:0 18px 40px rgba(99,102,241,0.12);}
+.card.header-hero h4{margin:0;font-weight:700}
+.card.header-hero p{margin:0.25rem 0 0;color:rgba(255,255,255,0.92)}
+
+.table.table-hover tbody tr:hover{background:linear-gradient(90deg, rgba(99,102,241,0.03), rgba(6,182,212,0.02))}
+
+@media (max-width:575.98px){
+  .dashboard-metric-icon{width:48px;height:48px;font-size:1.2rem}
+  .dashboard-metric-value{font-size:1.35rem}
+}
+
+/* small utility for subtle separators */
+.muted-sep{color:var(--dash-muted);font-size:0.9rem}
+
+/* More aggressive modern dashboard visuals */
+.metrics-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem;margin-bottom:1rem}
+.metric-tile{display:flex;flex-direction:column;justify-content:space-between;padding:1rem;border-radius:16px;color:#071233;min-height:120px;background:linear-gradient(180deg,rgba(255,255,255,0.75),rgba(250,250,255,0.6));box-shadow:0 12px 30px rgba(11,22,40,0.06);border:1px solid rgba(11,22,40,0.04)}
+.metric-top{display:flex;align-items:center;gap:0.85rem}
+.metric-icon-wrap{width:56px;height:56px;border-radius:12px;display:grid;place-items:center;color:#fff;font-size:1.4rem}
+.metric-body{display:flex;flex-direction:column}
+.metric-label{font-size:0.9rem;color:var(--dash-muted)}
+.metric-number{font-size:1.8rem;font-weight:800;color:#071233}
+.metric-change{font-size:0.85rem;color:var(--dash-muted)}
+
+.metric-variant-primary .metric-icon-wrap{background:linear-gradient(180deg,#6366f1,#06b6d4)}
+.metric-variant-success .metric-icon-wrap{background:linear-gradient(180deg,#10b981,#06b6d4)}
+.metric-variant-danger .metric-icon-wrap{background:linear-gradient(180deg,#ef4444,#f97316)}
+.metric-variant-warning .metric-icon-wrap{background:linear-gradient(180deg,#f59e0b,#f97316)}
+.metric-variant-info .metric-icon-wrap{background:linear-gradient(180deg,#06b6d4,#3b82f6)}
+
+.sparkline{width:100%;height:34px;margin-top:.5rem;opacity:.9}
+
+.rooms-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:0.8rem;margin-bottom:1rem}
+.room-tile{border-radius:12px;padding:0.75rem;background:rgba(255,255,255,0.9);display:flex;justify-content:space-between;align-items:center;border:1px solid rgba(11,22,40,0.04)}
+.room-tile .label{font-weight:700;color:#081029}
+.room-tile .count{font-weight:800;color:#081029;background:rgba(11,22,40,0.04);padding:6px 10px;border-radius:10px}
+
+.activity-list{list-style:none;margin:0;padding:0}
+.activity-item{display:flex;gap:0.75rem;padding:0.85rem;border-bottom:1px dashed rgba(11,22,40,0.04);align-items:center}
+.activity-avatar{width:44px;height:44px;border-radius:10px;background:linear-gradient(180deg,#eef2ff,#fff);display:grid;place-items:center;font-weight:700;color:#334155}
+.activity-content{flex:1}
+.activity-time{color:var(--dash-muted);font-size:0.85rem}
+
+/* Make activity list more compact on small screens */
+@media (max-width:575.98px){
+  .metric-number{font-size:1.3rem}
+  .metric-tile{min-height:100px}
+}
+
+/* Responsive fixes: prevent overlap and allow wrapping */
+.metrics-grid{grid-auto-rows:auto;align-items:stretch}
+.metric-tile{min-width:0;max-width:100%;width:100%;overflow:hidden;word-break:break-word}
+.metric-top{align-items:center}
+.metric-icon-wrap{flex:0 0 56px}
+.metric-body{min-width:0}
+.activity-item{flex-wrap:wrap}
+.activity-avatar{flex:0 0 44px;margin-bottom:0}
+
+@media (max-width: 991.98px){
+  .metrics-grid, .rooms-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+}
+
+@media (max-width: 575.98px){
+  .metrics-grid, .rooms-tiles { grid-template-columns: 1fr !important; }
+  .metric-top{align-items:flex-start}
+  .metric-icon-wrap{width:44px;height:44px}
+  .metric-tile{padding:.8rem}
+  .activity-item{padding:.6rem}
+  .activity-avatar{width:40px;height:40px}
+}
+

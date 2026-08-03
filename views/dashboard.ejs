@@ -1,220 +1,100 @@
 <%- include('layout', { title: 'Ana Sayfa' }) %>
 
-<style>
-  .dashboard-top-grid {
-    display: grid;
-    grid-template-columns: repeat(7, minmax(0, 1fr));
-    gap: 1rem;
-    margin-bottom: 1rem;
-  }
+<!-- Use global modern dashboard styles from public/css/style.css -->
+<div class="card header-hero">
+  <div class="d-flex justify-content-between align-items-center">
+    <div>
+      <h4>Ana Sayfa</h4>
+      <p class="mb-0">Hızlı genel bakış — odalar, personel ve son hareketler</p>
+    </div>
+    <div class="text-end muted-sep"><small><%= (new Date()).toLocaleString('tr-TR') %></small></div>
+  </div>
+</div>
 
-  .dashboard-bottom-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-    gap: 0.75rem;
-    margin-bottom: 1rem;
-  }
+<!-- İstatistik Kartları - Modern Tiles -->
+<div class="metrics-grid">
+  <div class="metric-tile metric-variant-primary">
+    <div class="metric-top">
+      <div class="metric-icon-wrap"><i class="bi bi-door-open"></i></div>
+      <div class="metric-body">
+        <div class="metric-label">Toplam Oda</div>
+        <div class="metric-number"><%= totalRooms %></div>
+      </div>
+    </div>
+    <svg class="sparkline" viewBox="0 0 100 34" preserveAspectRatio="none"><polyline fill="none" stroke="#6366f1" stroke-width="2" points="0,28 20,18 40,10 60,12 80,8 100,6"/></svg>
+  </div>
 
-  .dashboard-metric-card {
-    height: 100%;
-  }
+  <div class="metric-tile metric-variant-success">
+    <div class="metric-top">
+      <div class="metric-icon-wrap"><i class="bi bi-people"></i></div>
+      <div class="metric-body">
+        <div class="metric-label">Çıkış Yapmış Personel</div>
+        <div class="metric-number"><%= exitedPersonnel %></div>
+      </div>
+    </div>
+    <div class="metric-change">Bugün <strong><%= todayExits %></strong> kişi</div>
+  </div>
 
-  .dashboard-metric-card .card-body {
-    padding: 1rem 0.8rem;
-  }
+  <div class="metric-tile metric-variant-info">
+    <div class="metric-top">
+      <div class="metric-icon-wrap"><i class="bi bi-house-heart"></i></div>
+      <div class="metric-body">
+        <div class="metric-label">Mevcut Konaklayan Personel</div>
+        <div class="metric-number"><%= occupiedPersonnel %></div>
+      </div>
+    </div>
+    <div class="metric-change">Doluluk: <strong><%= occupiedPersonnel %></strong></div>
+  </div>
 
-  .dashboard-metric-icon {
-    font-size: 1.9rem;
-  }
-
-  .dashboard-metric-value {
-    font-size: 2rem;
-    line-height: 1;
-  }
-
-  .dashboard-metric-label {
-    font-size: 0.88rem;
-    line-height: 1.15;
-    min-height: 2.35em;
-    overflow-wrap: anywhere;
-    word-break: break-word;
-  }
-
-  .dashboard-room-card {
-    border-left-width: 4px !important;
-  }
-
-  .dashboard-room-card .card-body {
-    padding: 0.75rem 0.85rem;
-  }
-
-  .dashboard-room-label {
-    font-size: 0.78rem;
-    line-height: 1.15;
-    white-space: normal;
-    overflow-wrap: anywhere;
-    word-break: break-word;
-    max-width: calc(100% - 3rem);
-  }
-
-  @media (max-width: 1399.98px) {
-    .dashboard-top-grid {
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-    }
-
-    .dashboard-bottom-grid {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-  }
-
-  @media (max-width: 991.98px) {
-    .dashboard-top-grid,
-    .dashboard-bottom-grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-  }
-
-  @media (max-width: 767.98px) {
-    .dashboard-room-card .card-body {
-      padding: 0.7rem 0.75rem;
-    }
-
-    .dashboard-room-label {
-      max-width: calc(100% - 2.5rem);
-    }
-  }
-
-  @media (max-width: 575.98px) {
-    .dashboard-top-grid,
-    .dashboard-bottom-grid {
-      grid-template-columns: 1fr;
-    }
-
-    .dashboard-metric-card .card-body {
-      padding: 0.8rem 0.7rem;
-    }
-
-    .dashboard-metric-icon {
-      font-size: 1.55rem;
-    }
-
-    .dashboard-metric-value {
-      font-size: 1.55rem;
-    }
-
-    .dashboard-metric-label {
-      font-size: 0.82rem;
-      min-height: auto;
-    }
-
-    .dashboard-room-label {
-      font-size: 0.74rem;
-    }
-  }
-</style>
-
-<!-- İstatistik Kartları -->
-<div class="dashboard-top-grid">
-  <div class="card border-0 shadow-sm dashboard-metric-card">
-    <div class="card-body text-center">
-      <i class="bi bi-door-open text-primary dashboard-metric-icon"></i>
-      <h3 class="mt-2 mb-1 dashboard-metric-value"><%= totalRooms %></h3>
-      <p class="text-muted mb-0 dashboard-metric-label">Toplam Oda</p>
+  <div class="metric-tile metric-variant-primary">
+    <div class="metric-top">
+      <div class="metric-icon-wrap"><i class="bi bi-box-arrow-in-down"></i></div>
+      <div class="metric-body">
+        <div class="metric-label">Bugün Giriş</div>
+        <div class="metric-number"><%= todayEntries %></div>
+      </div>
     </div>
   </div>
 
-  <div class="card border-0 shadow-sm dashboard-metric-card">
-    <div class="card-body text-center">
-      <i class="bi bi-people text-success dashboard-metric-icon"></i>
-      <h3 class="mt-2 mb-1 dashboard-metric-value"><%= exitedPersonnel %></h3>
-      <p class="text-muted mb-0 dashboard-metric-label">Çıkış Yapmış Personel</p>
+  <div class="metric-tile metric-variant-danger">
+    <div class="metric-top">
+      <div class="metric-icon-wrap"><i class="bi bi-box-arrow-up"></i></div>
+      <div class="metric-body">
+        <div class="metric-label">Bugün Çıkış</div>
+        <div class="metric-number"><%= todayExits %></div>
+      </div>
     </div>
   </div>
 
-  <div class="card border-0 shadow-sm dashboard-metric-card">
-    <div class="card-body text-center">
-      <i class="bi bi-house-heart text-primary dashboard-metric-icon"></i>
-      <h3 class="mt-2 mb-1 dashboard-metric-value"><%= occupiedPersonnel %></h3>
-      <p class="text-muted mb-0 dashboard-metric-label">Mevcut Konaklayan Personel</p>
+  <div class="metric-tile metric-variant-warning">
+    <div class="metric-top">
+      <div class="metric-icon-wrap"><i class="bi bi-exclamation-circle"></i></div>
+      <div class="metric-body">
+        <div class="metric-label">Açık Sorun</div>
+        <div class="metric-number"><%= openIssues %></div>
+      </div>
     </div>
   </div>
 
-  <div class="card border-0 shadow-sm dashboard-metric-card">
-    <div class="card-body text-center">
-      <i class="bi bi-box-arrow-in-down text-success dashboard-metric-icon"></i>
-      <h3 class="mt-2 mb-1 dashboard-metric-value"><%= todayEntries %></h3>
-      <p class="text-muted mb-0 dashboard-metric-label">Bugün Giriş</p>
-    </div>
-  </div>
-
-  <div class="card border-0 shadow-sm dashboard-metric-card">
-    <div class="card-body text-center">
-      <i class="bi bi-box-arrow-up text-danger dashboard-metric-icon"></i>
-      <h3 class="mt-2 mb-1 dashboard-metric-value"><%= todayExits %></h3>
-      <p class="text-muted mb-0 dashboard-metric-label">Bugün Çıkış</p>
-    </div>
-  </div>
-
-  <div class="card border-0 shadow-sm dashboard-metric-card">
-    <div class="card-body text-center">
-      <i class="bi bi-exclamation-circle text-danger dashboard-metric-icon"></i>
-      <h3 class="mt-2 mb-1 dashboard-metric-value"><%= openIssues %></h3>
-      <p class="text-muted mb-0 dashboard-metric-label">Açık Sorun</p>
-    </div>
-  </div>
-
-  <div class="card border-0 shadow-sm dashboard-metric-card">
-    <div class="card-body text-center">
-      <i class="bi bi-box-seam text-warning dashboard-metric-icon"></i>
-      <h3 class="mt-2 mb-1 dashboard-metric-value"><%= unreturned %></h3>
-      <p class="text-muted mb-0 dashboard-metric-label">İade Bekleyen Eşya</p>
+  <div class="metric-tile metric-variant-warning">
+    <div class="metric-top">
+      <div class="metric-icon-wrap"><i class="bi bi-box-seam"></i></div>
+      <div class="metric-body">
+        <div class="metric-label">İade Bekleyen Eşya</div>
+        <div class="metric-number"><%= unreturned %></div>
+      </div>
     </div>
   </div>
 </div>
 
-<!-- Oda Durumları Hızlı Bakış -->
-<div class="dashboard-bottom-grid">
-  <div class="card border-start border-success dashboard-room-card">
-    <div class="card-body d-flex justify-content-between align-items-center gap-2 flex-nowrap">
-      <span class="text-muted dashboard-room-label">Boş Oda Sayısı</span>
-      <span class="badge bg-success fs-6"><%= emptyRooms %></span>
-    </div>
-  </div>
-
-  <div class="card border-start border-danger dashboard-room-card">
-    <div class="card-body d-flex justify-content-between align-items-center gap-2 flex-nowrap">
-      <span class="text-muted dashboard-room-label">Dolu Oda Sayısı</span>
-      <span class="badge bg-danger fs-6"><%= fullRooms %></span>
-    </div>
-  </div>
-
-  <div class="card border-start border-warning dashboard-room-card">
-    <div class="card-body d-flex justify-content-between align-items-center gap-2 flex-nowrap">
-      <span class="text-muted dashboard-room-label">Kısmi Dolu Oda Sayısı</span>
-      <span class="badge bg-warning fs-6"><%= partialRooms %></span>
-    </div>
-  </div>
-
-  <div class="card border-start border-info dashboard-room-card">
-    <div class="card-body d-flex justify-content-between align-items-center gap-2 flex-nowrap">
-      <span class="text-muted dashboard-room-label">Temiz Oda Sayısı</span>
-      <span class="badge bg-info text-dark fs-6"><%= availableRooms %></span>
-    </div>
-  </div>
-
-  <div class="card border-start border-warning dashboard-room-card">
-    <div class="card-body d-flex justify-content-between align-items-center gap-2 flex-nowrap">
-      <span class="text-muted dashboard-room-label">Temizlenmesi Gereken Oda Sayısı</span>
-      <span class="badge bg-warning text-dark fs-6"><%= cleaningNeededRooms %></span>
-    </div>
-  </div>
-
-  <div class="card border-start border-danger dashboard-room-card">
-    <div class="card-body d-flex justify-content-between align-items-center gap-2 flex-nowrap">
-      <span class="text-muted dashboard-room-label">Kullanılamaz Oda Sayısı</span>
-      <span class="badge bg-danger fs-6"><%= unavailableRooms %></span>
-    </div>
-  </div>
+<!-- Oda Durumları Hızlı Bakış - Tile Style -->
+<div class="rooms-tiles">
+  <div class="room-tile"><div class="label">Boş Oda Sayısı</div><div class="count"><%= emptyRooms %></div></div>
+  <div class="room-tile"><div class="label">Dolu Oda Sayısı</div><div class="count"><%= fullRooms %></div></div>
+  <div class="room-tile"><div class="label">Kısmi Dolu Oda Sayısı</div><div class="count"><%= partialRooms %></div></div>
+  <div class="room-tile"><div class="label">Temiz Oda Sayısı</div><div class="count"><%= availableRooms %></div></div>
+  <div class="room-tile"><div class="label">Temizlenmesi Gereken Oda Sayısı</div><div class="count"><%= cleaningNeededRooms %></div></div>
+  <div class="room-tile"><div class="label">Kullanılamaz Oda Sayısı</div><div class="count"><%= unavailableRooms %></div></div>
 </div>
 <!-- Son Hareketler -->
 <div class="card border-0 shadow-sm">
@@ -226,28 +106,17 @@
     <% if (recentActivity.length === 0) { %>
       <div class="text-center text-muted py-4">Henüz hareket kaydı yok</div>
     <% } else { %>
-    <div class="table-responsive">
-      <table class="table table-hover mb-0">
-        <thead class="table-light">
-          <tr>
-            <th>Tarih</th>
-            <th>İşlem</th>
-            <th>Açıklama</th>
-            <th>Kullanıcı</th>
-          </tr>
-        </thead>
-        <tbody>
-          <% recentActivity.forEach(a => { %>
-          <tr>
-            <td class="text-nowrap"><small><%= new Date(a.created_at).toLocaleString('tr-TR') %></small></td>
-            <td><span class="badge bg-primary"><%= a.action_type %></span></td>
-            <td><%= a.description %></td>
-            <td><%= a.user_name || '-' %></td>
-          </tr>
-          <% }) %>
-        </tbody>
-      </table>
-    </div>
+      <ul class="activity-list">
+        <% recentActivity.forEach(a => { %>
+          <li class="activity-item">
+            <div class="activity-avatar"><i class="bi bi-person"></i></div>
+            <div class="activity-content">
+              <div><strong><%= a.action_type %></strong> — <span class="muted-sep"><%= a.description %></span></div>
+              <div class="activity-time"><small><%= new Date(a.created_at).toLocaleString('tr-TR') %> • <%= a.user_name || '-' %></small></div>
+            </div>
+          </li>
+        <% }) %>
+      </ul>
     <% } %>
   </div>
 </div>

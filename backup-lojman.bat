@@ -41,11 +41,14 @@ REM -----------------------------------------------
 REM Database yedekle
 REM -----------------------------------------------
 echo.
-echo [3/5] Database yedekleniyor...
-docker cp lojman-dashboard:/data/lojman.db "%BACKUP_DIR%\lojman.db" 2>nul
+echo [3/5] Database yedekleniyor (SQLite Online Backup)...
+docker exec lojman-dashboard sqlite3 /data/lojman.db ".backup '/data/backup_temp.db'" 2>nul
 if errorlevel 1 (
-    REM Alternatif yol dene
-    docker cp lojman-dashboard:/app/lojman.db "%BACKUP_DIR%\lojman.db" 2>nul
+    echo [UYARI] SQLite online yedekleme basarisiz oldu. Dogrudan dosya kopyalanıyor...
+    docker cp lojman-dashboard:/data/lojman.db "%BACKUP_DIR%\lojman.db" 2>nul
+) else (
+    docker cp lojman-dashboard:/data/backup_temp.db "%BACKUP_DIR%\lojman.db" 2>nul
+    docker exec lojman-dashboard rm -f /data/backup_temp.db >nul 2>&1
 )
 if exist "%BACKUP_DIR%\lojman.db" (
     echo [OK] Database yedeklendi.

@@ -22,7 +22,7 @@ const io = socketIo(server, {
     methods: ["GET", "POST"]
   }
 });
-const PORT = Number(process.env.PORT || 3000);
+const PORT = Number(process.env.PORT || 3001);
 
 // HTTP Keep-Alive tuning for long-lived WhatsApp connections
 server.keepAliveTimeout = 120000; // 120 seconds (was 5s default)

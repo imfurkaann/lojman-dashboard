@@ -22,7 +22,7 @@ COPY package*.json ./
 COPY . .
 
 ENV NODE_ENV=production
-ENV PORT=3000
+ENV PORT=3001
 ENV DB_PATH=/data/lojman.db
 ENV TZ=Europe/Istanbul
 
@@ -31,9 +31,9 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 RUN mkdir -p /data /app/public/uploads/personnel
 RUN chmod -R 0777 /data /app/public/uploads/personnel || true
 
-EXPOSE 3000
+EXPOSE 3001
 
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=90s \
-  CMD curl -f http://localhost:3000/ || exit 1
+  CMD curl -f http://localhost:3001/ || exit 1
 
 CMD ["npm", "start"]
