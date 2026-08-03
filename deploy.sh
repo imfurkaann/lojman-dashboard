@@ -2,7 +2,7 @@
 set -e
 
 echo "==============================================="
-echo "  LOJMAN DASHBOARD - DEPLOYMENT (http://162.19.242.35:3001)"
+echo "  LOJMAN DASHBOARD - DEPLOYMENT (http://162.19.242.35:3002)"
 echo "==============================================="
 echo ""
 
@@ -19,5 +19,5 @@ docker compose ps
 echo ""
 echo "==============================================="
 echo "  ✅ DAĞITIM TAMAMLANDI!"
-echo "  🌐 Canlı Adres: http://162.19.242.35:3001"
+echo "  🌐 Canlı Adres: http://162.19.242.35:3002"
 echo "==============================================="
