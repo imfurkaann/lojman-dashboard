@@ -3,7 +3,7 @@ chcp 65001 >nul 2>&1
 cls
 echo ===============================================
 echo   LOJMAN DASHBOARD - DEPLOYMENT
-echo   Adres: http://162.19.242.35:33333
+echo   Adres: http://169.58.124.2:33333
 echo ===============================================
 echo.
 
@@ -20,6 +20,6 @@ docker compose ps
 echo.
 echo ===============================================
 echo   DAĞITIM TAMAMLANDI!
-echo   Tarayıcıdan erişebilirsiniz: http://162.19.242.35:33333
+echo   Tarayıcıdan erişebilirsiniz: http://169.58.124.2:33333
 echo ===============================================
 pause

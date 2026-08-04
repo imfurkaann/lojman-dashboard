@@ -253,7 +253,7 @@ server.listen(PORT, '0.0.0.0', () => {
     if (localIP !== 'localhost') break;
   }
   
-  const appUrl = process.env.APP_URL || `http://162.19.242.35:${PORT}`;
+  const appUrl = process.env.APP_URL || `http://169.58.124.2:${PORT}`;
   console.log(`Lojman Dashboard çalışıyor:`);
   console.log(`  Sunucu (Canlı): ${appUrl}`);
   console.log(`  Yerel: http://localhost:${PORT}`);
